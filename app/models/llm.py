@@ -1,29 +1,85 @@
 """
-LLM integration module using LangChain.
+Enhanced LLM integration module with comprehensive logging.
 
-This module provides a modular approach to LLM interactions with specialized
-prompt handlers for different types of operations in the Directory Chatbot.
+This module enhances the existing LLM handler with detailed logging
+of all requests and responses, plus improved error handling.
 """
 
-from typing import Dict, List, Optional, Any, Union
 import json
 import logging
+import sys
+import time
+from typing import Dict, List, Optional, Any, Union
+import traceback
 
 from langchain_groq import ChatGroq
 from langchain.prompts import ChatPromptTemplate
-from langchain.schema import SystemMessage, HumanMessage
+from langchain.schema import SystemMessage, HumanMessage, AIMessage
 from langchain.output_parsers import ResponseSchema, StructuredOutputParser
+from langchain_core.messages import BaseMessage
 
-from app.config.settings import GROQ_API_KEY, LLM_MODEL
+from app.config.settings import GROQ_API_KEY, LLM_MODEL, DEBUG
 
-# Configure logging
-logger = logging.getLogger(__name__)
-
-# Initialize the LLM
-llm = ChatGroq(
-    api_key=GROQ_API_KEY,
-    model_name=LLM_MODEL
+# Configure enhanced logging
+logging.basicConfig(
+    level=logging.DEBUG if DEBUG else logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
 )
+
+logger = logging.getLogger("llm")
+
+# Custom LLM wrapper to intercept and log all communications
+class LoggingChatGroq(ChatGroq):
+    """
+    Extension of ChatGroq that logs all requests and responses.
+    """
+    
+    def invoke(self, input: Union[str, List[BaseMessage]], **kwargs) -> Any:
+        """Override invoke to add logging."""
+        request_id = f"req_{int(time.time() * 1000)}"
+        
+        # Log the request
+        if isinstance(input, str):
+            logger.debug(f"[{request_id}] LLM REQUEST (text):\n{input}\n")
+        else:
+            logger.debug(f"[{request_id}] LLM REQUEST (messages):")
+            for i, msg in enumerate(input):
+                logger.debug(f"[{request_id}] Message {i+1} ({msg.type}): {msg.content}")
+        
+        logger.debug(f"[{request_id}] LLM PARAMETERS: {kwargs}")
+        
+        try:
+            # Call the parent class method
+            start_time = time.time()
+            response = super().invoke(input, **kwargs)
+            elapsed = time.time() - start_time
+            
+            # Log the response
+            if hasattr(response, 'content'):
+                logger.debug(f"[{request_id}] LLM RESPONSE ({elapsed:.2f}s):\n{response.content}\n")
+            else:
+                logger.debug(f"[{request_id}] LLM RESPONSE ({elapsed:.2f}s):\n{response}\n")
+            
+            return response
+        except Exception as e:
+            logger.error(f"[{request_id}] LLM ERROR: {str(e)}")
+            logger.error(f"[{request_id}] TRACEBACK: {traceback.format_exc()}")
+            raise
+
+# Initialize the LLM with improved logging
+try:
+    llm = LoggingChatGroq(
+        api_key=GROQ_API_KEY,
+        model_name=LLM_MODEL,
+        temperature=0.7,  # Added explicit temperature
+    )
+    logger.info(f"LLM initialized: {LLM_MODEL}")
+except Exception as e:
+    logger.error(f"Failed to initialize LLM: {str(e)}")
+    llm = None
 
 class PromptTemplates:
     """
@@ -75,7 +131,7 @@ The value for Step should be a concise text description of the particular step b
 
 The value for Next Action should be ONE item from the list of ACTION TYPES - the most appropriate next action to follow the ACTION HISTORY and LOGS in accordance with the WORKFLOW.
 
-Respond in perfect JSON. Start your response with and open bracket, and end it with a closign bracket.
+Start your response with a single opening brace and end it with a single closing brace.
 """
 
     MESSAGE_GENERATION = """
@@ -113,7 +169,7 @@ WRITING GUIDELINES:
 5. If collecting information, ask one question at a time.
 6. Include relevant details from the context when appropriate.
 
-Respond in perfectly formatted JSON with keys 'Thinking' and 'Message'. Start your response with { and end it with }
+Respond in perfectly formatted JSON with keys 'Thinking' and 'Message'. Start your response with a single opening brace and end it with a single closing brace.
 """
 
     KNOWLEDGEBASE_UPSERT = """
@@ -235,13 +291,47 @@ class LLMUtils:
         Returns:
             Extracted JSON content
         """
-        if not content.strip().startswith('{') or not content.strip().endswith('}'):
-            # Try to extract JSON from the response
+        # Log the raw content first
+        logger.debug(f"Extracting JSON from raw content:\n{content}")
+        
+        # If content is already valid JSON, return it
+        try:
+            json.loads(content)
+            return content
+        except json.JSONDecodeError:
+            pass
+        
+        # Try to extract JSON from the response
+        try:
+            # Look for JSON starting with { and ending with }
+            content = content.strip()
+            
+            # Find all potential JSON objects (there might be text before or after)
             start_idx = content.find('{')
-            end_idx = content.rfind('}') + 1
-            if start_idx >= 0 and end_idx > start_idx:
-                return content[start_idx:end_idx]
-        return content
+            if start_idx >= 0:
+                # Track braces to find proper closing
+                open_braces = 0
+                for i in range(start_idx, len(content)):
+                    if content[i] == '{':
+                        open_braces += 1
+                    elif content[i] == '}':
+                        open_braces -= 1
+                        if open_braces == 0:
+                            # Found complete JSON object
+                            extracted = content[start_idx:i+1]
+                            try:
+                                # Validate it's valid JSON
+                                json.loads(extracted)
+                                logger.debug(f"Successfully extracted JSON: {extracted}")
+                                return extracted
+                            except json.JSONDecodeError:
+                                logger.warning(f"Found JSON-like structure but it's invalid: {extracted}")
+            
+            logger.warning(f"No valid JSON found in content")
+            return content
+        except Exception as e:
+            logger.error(f"Error extracting JSON: {str(e)}")
+            return content
     
     @staticmethod
     def parse_json_response(content: str) -> Dict:
@@ -254,26 +344,69 @@ class LLMUtils:
         Returns:
             Parsed JSON as dict
         """
+        original_content = content
+        logger.debug(f"Attempting to parse as JSON: {content[:500]}...")
+        
         # Try to extract JSON from the response
         try:
             # First try to parse as is
-            return json.loads(content)
-        except json.JSONDecodeError:
-            # If that fails, try to extract JSON from the content
             try:
-                content = content.strip()
+                parsed = json.loads(content)
+                logger.debug(f"Successfully parsed JSON directly")
+                return parsed
+            except json.JSONDecodeError:
+                # Try to extract JSON
+                extracted_json = LLMUtils.extract_json_from_response(content)
+                
+                if extracted_json != content:
+                    logger.debug(f"Using extracted JSON: {extracted_json}")
+                    try:
+                        return json.loads(extracted_json)
+                    except json.JSONDecodeError:
+                        logger.warning(f"Extracted JSON is invalid: {extracted_json}")
+                
+                # If extraction didn't work, try more aggressive methods
+                # Look for the first { and last }
                 start_idx = content.find('{')
                 end_idx = content.rfind('}') + 1
+                
                 if start_idx >= 0 and end_idx > start_idx:
-                    extracted_json = content[start_idx:end_idx]
-                    return json.loads(extracted_json)
-                else:
-                    logger.error(f"Could not extract JSON from content: {content}")
-                    raise ValueError("No JSON content found in response")
-            except Exception as e:
-                logger.error(f"JSON extraction error: {e}")
-                logger.error(f"Content: {content}")
-                raise
+                    try:
+                        strict_extract = content[start_idx:end_idx]
+                        logger.debug(f"Trying strict extract: {strict_extract}")
+                        return json.loads(strict_extract)
+                    except json.JSONDecodeError:
+                        logger.warning(f"Strict extract is invalid JSON")
+                
+                # Last resort: try to build a JSON object from parts of the response
+                if ":" in content and ("Thinking" in content or "Message" in content):
+                    logger.debug("Attempting to construct JSON from key-value pairs")
+                    # Try to extract key-value pairs
+                    result = {}
+                    
+                    for line in content.split('\n'):
+                        line = line.strip()
+                        if ':' in line and not line.startswith('{') and not line.startswith('}'):
+                            parts = line.split(':', 1)
+                            key = parts[0].strip().strip('"')
+                            value = parts[1].strip().strip(',').strip('"')
+                            result[key] = value
+                    
+                    if result:
+                        logger.debug(f"Constructed JSON from parts: {result}")
+                        return result
+                
+                logger.error(f"Could not extract valid JSON from: {original_content}")
+                raise ValueError("No JSON content found in response")
+        except Exception as e:
+            logger.error(f"JSON parsing error: {str(e)}")
+            logger.error(f"Original content: {original_content}")
+            
+            # Return a fallback response instead of raising an exception
+            return {
+                "error": f"Failed to parse LLM response as JSON: {str(e)}",
+                "raw_content": original_content[:500] + ("..." if len(original_content) > 500 else "")
+            }
         
 class PromptHandler:
     """
@@ -300,21 +433,43 @@ class PromptHandler:
             Parsed response from the LLM
         """
         try:
+            # If LLM is not initialized, return an error
+            if llm is None:
+                logger.error("LLM is not initialized")
+                return self.error_response("LLM is not initialized")
+            
+            # Format the prompt
             prompt_message = self.prompt_template.format(**kwargs)
-            logger.debug(f"Sending prompt to LLM: {prompt_message}")
             
+            # Log formatted prompt
+            logger.info(f"Invoking LLM with formatted prompt")
+            
+            # Invoke the LLM
+            start_time = time.time()
             response = llm.invoke(prompt_message)
-            content = response.content
-            logger.debug(f"Raw LLM response: {content}")
+            elapsed = time.time() - start_time
             
-            parsed = LLMUtils.parse_json_response(content)
-            return parsed
-        except json.JSONDecodeError as e:
-            logger.error(f"JSON decode error: {e}")
-            logger.error(f"Raw response: {content}")
-            return self.fallback_response()
+            # Log the raw response before parsing
+            content = response.content
+            logger.info(f"LLM response received in {elapsed:.2f}s, length: {len(content)} chars")
+            
+            # Parse the response as JSON
+            try:
+                parsed = LLMUtils.parse_json_response(content)
+                
+                # Check if we got an error during parsing
+                if "error" in parsed:
+                    logger.warning(f"JSON parsing returned an error response: {parsed['error']}")
+                    
+                return parsed
+            except json.JSONDecodeError as e:
+                logger.error(f"JSON decode error: {e}")
+                logger.error(f"Raw response: {content}")
+                return self.fallback_response()
+            
         except Exception as e:
-            logger.error(f"Error invoking LLM: {e}")
+            logger.error(f"Error invoking LLM: {str(e)}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return self.error_response(str(e))
     
     def fallback_response(self) -> Dict:
@@ -617,33 +772,33 @@ class LLMHandler:
     
     @property
     def action_handler(self) -> ActionDeterminationHandler:
-        if not self._action_handler:
-            self._action_handler = ActionDeterminationHandler()
-        return self._action_handler
+        if not LLMHandler._action_handler:
+            LLMHandler._action_handler = ActionDeterminationHandler()
+        return LLMHandler._action_handler
     
     @property
     def message_handler(self) -> MessageGenerationHandler:
-        if not self._message_handler:
-            self._message_handler = MessageGenerationHandler()
-        return self._message_handler
+        if not LLMHandler._message_handler:
+            LLMHandler._message_handler = MessageGenerationHandler()
+        return LLMHandler._message_handler
     
     @property
     def upsert_handler(self) -> KnowledgebaseUpsertHandler:
-        if not self._upsert_handler:
-            self._upsert_handler = KnowledgebaseUpsertHandler()
-        return self._upsert_handler
+        if not LLMHandler._upsert_handler:
+            LLMHandler._upsert_handler = KnowledgebaseUpsertHandler()
+        return LLMHandler._upsert_handler
     
     @property
     def query_handler(self) -> QueryGenerationHandler:
-        if not self._query_handler:
-            self._query_handler = QueryGenerationHandler()
-        return self._query_handler
+        if not LLMHandler._query_handler:
+            LLMHandler._query_handler = QueryGenerationHandler()
+        return LLMHandler._query_handler
     
     @property
     def context_handler(self) -> ContextManagementHandler:
-        if not self._context_handler:
-            self._context_handler = ContextManagementHandler()
-        return self._context_handler
+        if not LLMHandler._context_handler:
+            LLMHandler._context_handler = ContextManagementHandler()
+        return LLMHandler._context_handler
     
     @staticmethod
     def determine_action(user_details: Dict, active_context: Dict, 
@@ -695,3 +850,44 @@ class LLMHandler:
         """
         handler = LLMHandler().context_handler
         return handler.update_context(current_context, messages, current_workflow)
+
+
+# Add DEBUG mode test if this file is run directly
+if __name__ == "__main__":
+    print("LLM Module Test")
+    print("-" * 40)
+    print(f"Using model: {LLM_MODEL}")
+    print(f"API Key available: {'Yes' if GROQ_API_KEY else 'No'}")
+    print("-" * 40)
+    
+    if llm:
+        try:
+            # Test with a simple prompt
+            print("Testing LLM with a simple prompt...")
+            response = llm.invoke("Hello, please respond with valid JSON. Format: {\"status\": \"ok\"}")
+            print(f"Response: {response.content}")
+            
+            # Test JSON parsing
+            print("\nTesting JSON extraction...")
+            extracted = LLMUtils.extract_json_from_response(response.content)
+            print(f"Extracted: {extracted}")
+            
+            # Test action determination
+            print("\nTesting action determination...")
+            handler = ActionDeterminationHandler()
+            result = handler.determine_action(
+                user_details={"metadata": {}},
+                active_context={},
+                current_workflow={"name": "determine_workflow", "steps": {"1": "Analyze user message"}},
+                available_workflows=[],
+                messages=[{"direction": "inbound", "message_content": "Hello", "timestamp": "2023-01-01"}],
+                action_types=["Send User Message", "Wait"]
+            )
+            print(f"Result: {json.dumps(result, indent=2)}")
+            
+            print("\nAll tests completed successfully!")
+        except Exception as e:
+            print(f"Error during testing: {str(e)}")
+            print(traceback.format_exc())
+    else:
+        print("LLM is not initialized. Cannot run tests.")
