@@ -245,13 +245,28 @@ Determine what context is relevant for the current conversation.
 {current_workflow}
 </USER WORKFLOW>
 
+IMPORTANT: If the user is adding an event, carefully extract the following details from their messages:
+- Event name (look for phrases like 'The event is called', 'The name is', etc.)
+- Event date/time
+- Event location
+- Event description or theme
+- Contact information
+
+Even if some information was provided in previous messages, include it in the context.
+
 Respond with updated context information:
 
 {
- "reasoning": "",
- "keepContext": [], // List of context keys to keep
- "removeContext": [], // List of context keys to remove
- "addContext": {} // New context to add
+"reasoning": "",
+"keepContext": [], // List of context keys to keep
+"removeContext": [], // List of context keys to remove
+"addContext": {
+// New context to add
+// If user provided event details, include them here:
+// "event_name": "Name provided by user",
+// "event_time": "Time provided by user",
+// etc.
+}
 }
 """
 
@@ -506,21 +521,31 @@ class ActionDeterminationHandler(PromptHandler):
                         current_workflow: Dict, available_workflows: List[Dict],
                         messages: List[Dict], action_types: List[str]) -> Dict:
         """
-        Determine the next action based on current context.
-        
-        Args:
-            user_details: Information about the user
-            active_context: Active conversation context
-            current_workflow: Current workflow being executed
-            available_workflows: List of available workflows
-            messages: Message history
-            action_types: Available action types
-            
-        Returns:
-            Action determination result
+        Determine the next action based on current context with improved entity extraction.
         """
         # Prepare context for the prompt
         user_entity_json = json.dumps(user_details.get('metadata', {}), indent=2)
+        
+        # Enhance context processing - check if there's event information in messages
+        # that might not be in active_context yet
+        if 'event_name' not in active_context:
+            # Try to extract event information from the last few messages
+            for msg in messages[-3:]:  # Check last 3 messages
+                content = msg.get('message_content', '').lower()
+                
+                # Look for event name patterns
+                if 'name is' in content or 'called' in content or 'event is' in content:
+                    # Simple extraction logic - can be improved
+                    event_name = content.split('name is')[-1].strip() if 'name is' in content else \
+                                content.split('called')[-1].strip() if 'called' in content else \
+                                content.split('event is')[-1].strip()
+                    
+                    # Add to active context
+                    active_context['event_name'] = event_name
+                    
+                    # Log the extraction
+                    logger.info(f"Extracted event_name: {event_name}")
+        
         active_context_str = json.dumps(active_context, indent=2)
         workflow_name = current_workflow.get('name', 'No Workflow')
         workflow_steps = json.dumps(current_workflow.get('steps', {}), indent=2)

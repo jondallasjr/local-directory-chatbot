@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Directory Chatbot Simulator</title>
+    <title>Directory Chatbot Whatsapp Simulator</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         .chat-container {
@@ -64,6 +64,51 @@
             border-radius: 5px;
             margin: 10px 0;
         }
+        .raw-logs {
+            font-family: monospace;
+            font-size: 0.85em;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+            padding: 10px;
+            border-radius: 5px;
+            height: 400px;
+            overflow-y: auto;
+            margin: 0;
+        }
+        .log-request {
+            color: #569cd6;
+        }
+        .log-response {
+            color: #4ec9b0;
+        }
+        .log-error {
+            color: #f44747;
+        }
+        .log-info {
+            color: #9cdcfe;
+        }
+        .log-timestamp {
+            color: #999999;
+            font-size: 0.8em;
+        }
+        .raw-logs::-webkit-scrollbar {
+            width: 10px;
+        }
+        .raw-logs::-webkit-scrollbar-track {
+            background: #2d2d2d;
+        }
+        .raw-logs::-webkit-scrollbar-thumb {
+            background-color: #555;
+            border-radius: 5px;
+        }
+        .toggle-controls {
+            margin-bottom: 10px;
+        }
+        .debug-options label {
+            margin-right: 15px;
+        }
     </style>
 </head>
 <body>
@@ -119,6 +164,9 @@
                             <li class="nav-item" role="presentation">
                                 <button class="nav-link" id="actions-tab" data-bs-toggle="tab" data-bs-target="#actions" type="button" role="tab" aria-controls="actions" aria-selected="false">Actions</button>
                             </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="rawlogs-tab" data-bs-toggle="tab" data-bs-target="#rawlogs" type="button" role="tab" aria-controls="rawlogs" aria-selected="false">Raw Logs</button>
+                            </li>
                         </ul>
                     </div>
                     <div class="card-body">
@@ -137,6 +185,26 @@
                                 <div id="actionsContent" class="action-panel">
                                     <div class="alert alert-info">Action history will appear here after sending a message.</div>
                                 </div>
+                            </div>
+                            <div class="tab-pane fade" id="rawlogs" role="tabpanel" aria-labelledby="rawlogs-tab">
+                                <div class="toggle-controls mb-2">
+                                    <div class="debug-options">
+                                        <div class="form-check form-check-inline">
+                                            <input class="form-check-input" type="checkbox" id="showRequests" checked>
+                                            <label class="form-check-label" for="showRequests">API Requests</label>
+                                        </div>
+                                        <div class="form-check form-check-inline">
+                                            <input class="form-check-input" type="checkbox" id="showResponses" checked>
+                                            <label class="form-check-label" for="showResponses">API Responses</label>
+                                        </div>
+                                        <div class="form-check form-check-inline">
+                                            <input class="form-check-input" type="checkbox" id="showPrompts" checked>
+                                            <label class="form-check-label" for="showPrompts">LLM Prompts</label>
+                                        </div>
+                                        <button class="btn btn-sm btn-secondary float-end" id="clearLogsBtn">Clear Logs</button>
+                                    </div>
+                                </div>
+                                <pre id="rawLogsContent" class="raw-logs">Waiting for logs... Send a message to see the raw debug output.</pre>
                             </div>
                         </div>
                     </div>
@@ -160,9 +228,84 @@
             const thinkingContent = document.getElementById('thinkingContent');
             const contextContent = document.getElementById('contextContent');
             const actionsContent = document.getElementById('actionsContent');
+            const rawLogsContent = document.getElementById('rawLogsContent');
+            const clearLogsBtn = document.getElementById('clearLogsBtn');
+            const showRequests = document.getElementById('showRequests');
+            const showResponses = document.getElementById('showResponses');
+            const showPrompts = document.getElementById('showPrompts');
             
-            // localStorage for message history
+            // localStorage for message history and logs
             let messageHistory = JSON.parse(localStorage.getItem('chatMessages') || '{}');
+            let debugLogs = JSON.parse(localStorage.getItem('debugLogs') || '[]');
+            
+            // Filter logs based on checkboxes
+            function filterLogs() {
+                const filteredLogs = debugLogs.filter(log => {
+                    if (log.type === 'request' && !showRequests.checked) return false;
+                    if (log.type === 'response' && !showResponses.checked) return false;
+                    if (log.type === 'prompt' && !showPrompts.checked) return false;
+                    return true;
+                });
+                
+                displayLogs(filteredLogs);
+            }
+            
+            // Display logs in the raw logs panel
+            function displayLogs(logs) {
+                if (logs.length === 0) {
+                    rawLogsContent.textContent = 'No logs to display. Send a message to see debug output.';
+                    return;
+                }
+                
+                rawLogsContent.innerHTML = '';
+                logs.forEach(log => {
+                    const logEntry = document.createElement('div');
+                    const timestamp = new Date(log.timestamp).toISOString().replace('T', ' ').substr(0, 19);
+                    
+                    logEntry.innerHTML = `<span class="log-timestamp">[${timestamp}]</span> `;
+                    
+                    switch(log.type) {
+                        case 'request':
+                            logEntry.innerHTML += `<span class="log-request">API REQUEST</span>\n${log.content}\n\n`;
+                            break;
+                        case 'response':
+                            logEntry.innerHTML += `<span class="log-response">API RESPONSE</span>\n${log.content}\n\n`;
+                            break;
+                        case 'prompt':
+                            logEntry.innerHTML += `<span class="log-info">LLM PROMPT</span>\n${log.content}\n\n`;
+                            break;
+                        case 'error':
+                            logEntry.innerHTML += `<span class="log-error">ERROR</span>\n${log.content}\n\n`;
+                            break;
+                        default:
+                            logEntry.innerHTML += `${log.content}\n\n`;
+                    }
+                    
+                    rawLogsContent.appendChild(logEntry);
+                });
+                
+                // Scroll to bottom
+                rawLogsContent.scrollTop = rawLogsContent.scrollHeight;
+            }
+            
+            // Add log entry
+            function addLogEntry(type, content) {
+                const logEntry = {
+                    type: type,
+                    content: content,
+                    timestamp: new Date().toISOString()
+                };
+                
+                debugLogs.push(logEntry);
+                
+                // Keep only the last 200 log entries to prevent localStorage from getting too large
+                if (debugLogs.length > 200) {
+                    debugLogs = debugLogs.slice(-200);
+                }
+                
+                localStorage.setItem('debugLogs', JSON.stringify(debugLogs));
+                filterLogs();
+            }
             
             // Load existing messages for current phone
             function loadMessages() {
@@ -222,16 +365,22 @@
                     contextContent.innerHTML = '<div class="alert alert-info">Loading context...</div>';
                     actionsContent.innerHTML = '<div class="alert alert-info">Loading actions...</div>';
                     
+                    // Prepare request data
+                    const requestData = {
+                        phone_number: phone,
+                        message: message
+                    };
+                    
+                    // Log the request
+                    addLogEntry('request', `URL: ${apiUrl}/api/simulate/message\nMethod: POST\nHeaders: Content-Type: application/json\nBody: ${JSON.stringify(requestData, null, 2)}`);
+                    
                     // Send to API
                     const response = await fetch(`${apiUrl}/api/simulate/message`, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json'
                         },
-                        body: JSON.stringify({
-                            phone_number: phone,
-                            message: message
-                        })
+                        body: JSON.stringify(requestData)
                     });
                     
                     if (!response.ok) {
@@ -239,6 +388,14 @@
                     }
                     
                     const data = await response.json();
+                    
+                    // Log the response
+                    addLogEntry('response', `Status: ${response.status} ${response.statusText}\nBody: ${JSON.stringify(data, null, 2)}`);
+                    
+                    // If there's a prompt in the response, log it
+                    if (data.prompt) {
+                        addLogEntry('prompt', data.prompt);
+                    }
                     
                     // Add bot response to chat
                     if (data.message) {
@@ -303,6 +460,7 @@
                     
                 } catch (error) {
                     console.error('Error sending message:', error);
+                    addLogEntry('error', error.message);
                     thinkingContent.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
                     addMessageToChat(`Error: Unable to get response from server. ${error.message}`, false);
                 }
@@ -341,8 +499,20 @@
                 loadMessages();
             });
             
+            clearLogsBtn.addEventListener('click', function() {
+                debugLogs = [];
+                localStorage.setItem('debugLogs', JSON.stringify(debugLogs));
+                rawLogsContent.textContent = 'Logs cleared. Send a message to see new debug output.';
+            });
+            
+            // Log filtering controls
+            showRequests.addEventListener('change', filterLogs);
+            showResponses.addEventListener('change', filterLogs);
+            showPrompts.addEventListener('change', filterLogs);
+            
             // Initial load
             loadMessages();
+            filterLogs();
         });
     </script>
 </body>
