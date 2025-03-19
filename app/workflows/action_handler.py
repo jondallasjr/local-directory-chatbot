@@ -2,6 +2,8 @@
 Action handler module for managing workflow execution.
 """
 
+from app.database.supabase_client import SupabaseDB, supabase
+from app.utils.logging_utils import log_exceptions
 from typing import Dict, List, Optional, Any, Union
 import json
 import logging
@@ -16,6 +18,182 @@ class ActionHandler:
     """
     Handles the execution of actions based on workflow state.
     """
+    
+    @staticmethod
+    @log_exceptions 
+    def process_incoming_message(phone_number: str, message_content: str) -> Dict:
+        """
+        Process an incoming message from a user (with workflow management).
+        """
+        try:
+            # Get or create user
+            user = SupabaseDB.get_or_create_user(phone_number)
+            if not user:
+                # Log error and return generic message
+                SupabaseDB.add_log(
+                    message=f"Failed to get or create user for {phone_number}",
+                    level='error'
+                )
+                return {
+                    "message": "Sorry, we're experiencing technical difficulties. Please try again later."
+                }
+                    
+            user_id = user['id']
+            
+            # Add the incoming message to the database
+            message = SupabaseDB.add_message(
+                user_id=user_id,
+                content=message_content,
+                direction='inbound'
+            )
+            
+            # Get recent message history
+            messages = SupabaseDB.get_user_messages(user_id)
+            messages.reverse()  # Chronological order
+            
+            # Get active workflows for this user, ordered by most recently created
+            active_workflows = SupabaseDB.get_active_workflows_for_user(user_id)
+            
+            # If no active workflows, create a new "determine_workflow" instance
+            if not active_workflows:
+                # Get workflow definition
+                determine_workflow_def = ActionHandler.get_workflow_definition_by_name("determine_workflow")
+                if not determine_workflow_def:
+                    # Log error and return generic message
+                    SupabaseDB.add_log(
+                        message=f"Failed to find determine_workflow definition",
+                        level='error',
+                        user_id=user_id
+                    )
+                    return {
+                        "message": "Sorry, we're experiencing technical difficulties. Please try again later."
+                    }
+                    
+                # Create workflow instance
+                new_workflow = SupabaseDB.create_workflow_instance(
+                    definition_id=determine_workflow_def.get('id'),
+                    user_id=user_id,
+                    status='active'
+                )
+                
+                if not new_workflow:
+                    # Log error and return generic message
+                    SupabaseDB.add_log(
+                        message=f"Failed to create workflow instance for user {user_id}",
+                        level='error',
+                        user_id=user_id
+                    )
+                    return {
+                        "message": "Sorry, we're experiencing technical difficulties. Please try again later."
+                    }
+                
+                # Use the new workflow
+                current_workflow = new_workflow
+                # Also add it to active workflows list
+                active_workflows = [current_workflow]
+            else:
+                # Use the most recent active workflow
+                current_workflow = active_workflows[0]
+            
+            # Update message with workflow ID
+            if message:
+                SupabaseDB.update_message(
+                    message_id=message['id'],
+                    workflow_id=current_workflow['id']
+                )
+            
+            # Initialize or get context data
+            active_context = current_workflow.get('context_data', {})
+            
+            # Add materialized views from all active workflows to context
+            for workflow in active_workflows:
+                # Extract required materializations from workflow definition
+                workflow_def = workflow.get('workflow_definition', {})
+                required_views = workflow_def.get('required_materializations', [])
+                
+                # Add each required view to the active context
+                for view_name in required_views:
+                    # Get the materialized view content
+                    view_content = SupabaseDB.get_materialized_view(view_name)
+                    if view_content:
+                        # Add to context with prefix to avoid collisions
+                        active_context[f"materialized_{view_name}"] = view_content
+            
+            # Extract workflow information
+            workflow_def = current_workflow.get('workflow_definition', {})
+            
+            # Prepare workflow information for LLM
+            workflow_for_llm = {
+                'id': current_workflow.get('id'),
+                'name': workflow_def.get('name', 'Unknown'),
+                'description': workflow_def.get('description', ''),
+                'steps': workflow_def.get('steps', {}),
+                'status': current_workflow.get('status', 'active'),
+                'current_step': current_workflow.get('current_step'),
+                'context_data': active_context
+            }
+        
+            # Determine next action
+            action_result = LLMHandler.determine_action(
+                user_details=user,
+                active_context=active_context,
+                current_workflow=workflow_for_llm,
+                available_workflows=ActionHandler.get_workflow_definitions(),
+                messages=messages,
+                action_types=ActionHandler.get_action_types()
+            )
+            
+            # Update the workflow instance with any new step
+            if action_result.get('Step'):
+                SupabaseDB.update_workflow_instance(
+                    instance_id=current_workflow['id'],
+                    status='active',
+                    current_step=action_result.get('Step'),
+                    context_data=active_context
+                )
+            
+            # Create action record
+            action = SupabaseDB.create_action(
+                workflow_id=current_workflow['id'],
+                action_type=action_result.get('Next Action', 'Send User Message'),
+                description=action_result.get('Step', 'Processing user message'),
+                thinking=action_result.get('Thinking', 'Determining next action')
+            )
+            
+            if not action:
+                # Log error and return generic message
+                SupabaseDB.add_log(
+                    message=f"Failed to create action for workflow {current_workflow['id']}",
+                    level='error',
+                    user_id=user_id
+                )
+                return {
+                    "message": "Sorry, we're experiencing technical difficulties. Please try again later."
+                }
+                
+            # Execute the action
+            return ActionHandler.execute_action(
+                action_type=action_result.get('Next Action', 'Send User Message'),
+                user=user,
+                active_context=active_context,
+                workflow=workflow_for_llm,
+                active_workflows=active_workflows,
+                messages=messages,
+                action_id=action['id']
+            )
+            
+        except Exception as e:
+            logger.error(f"Error processing message: {e}", exc_info=True)
+            SupabaseDB.add_log(
+                message=f"Error processing message: {str(e)}",
+                level='error',
+                user_id=user_id if locals().get('user_id') else None,
+                details={"error": str(e), "message": message_content}
+            )
+            return {
+                "message": "Sorry, I encountered an error while processing your message. Please try again later.",
+                "error": str(e)
+            }
     
     @staticmethod
     def get_action_types() -> List[str]:
@@ -64,207 +242,85 @@ class ActionHandler:
             raise
     
     @staticmethod
-    def process_incoming_message(phone_number: str, message_content: str) -> Dict:
+    def create_workflow_instance(definition_id: str, user_id: str, 
+                            status: str = 'in_progress',  # Match the default in SupabaseDB
+                            current_step: Optional[str] = None,
+                            context_data: Optional[Dict] = None) -> Optional[Dict]:
         """
-        Process an incoming message from a user.
-        
-        Args:
-            phone_number: User's phone number
-            message_content: Content of the message
-            
-        Returns:
-            Response dict with message to send back
+        Create a new workflow instance with the full definition copied.
         """
         try:
-            # Get or create user
-            user = SupabaseDB.get_or_create_user(phone_number)
-            if not user:
-                # Log error and return generic message
-                SupabaseDB.add_log(
-                    message=f"Failed to get or create user for {phone_number}",
-                    level='error'
-                )
-                return {
-                    "message": "Sorry, we're experiencing technical difficulties. Please try again later."
-                }
+            # First, get the workflow definition
+            workflow_def = SupabaseDB.get_workflow_definition(definition_id)
+            if not workflow_def:
+                logger.error(f"Workflow definition not found: {definition_id}")
+                return None
                 
-            user_id = user['id']
-            
-            # Add the incoming message to the database
-            message = SupabaseDB.add_message(
-                user_id=user_id,
-                content=message_content,
-                direction='inbound'
-            )
-            
-            # Get recent message history
-            messages = SupabaseDB.get_user_messages(user_id)
-            messages.reverse()  # Chronological order
-            
-            # See if the user has an active workflow already
-            active_workflow = None
-            try:
-                # Check for any in-progress workflows for this user
-                response = SupabaseDB.supabase.table('workflow_instances') \
-                    .select('*') \
-                    .eq('user_id', user_id) \
-                    .eq('status', 'in_progress') \
-                    .order('started_at', desc=True) \
-                    .limit(1) \
-                    .execute()
-                
-                if response.data and len(response.data) > 0:
-                    active_workflow = response.data[0]
-                    logger.info(f"Found active workflow for user: {active_workflow['id']}")
-            except Exception as e:
-                logger.warning(f"Error checking for active workflows: {e}")
-            
-            # If no active workflow, create a new one with the default workflow
-            if not active_workflow:
-                # Get workflow definition
-                default_workflow_def = ActionHandler.get_workflow_definition_by_name("determine_workflow")
-                if not default_workflow_def:
-                    # Log error and return generic message
-                    SupabaseDB.add_log(
-                        message=f"Failed to find default workflow definition",
-                        level='error',
-                        user_id=user_id
-                    )
-                    return {
-                        "message": "Sorry, we're experiencing technical difficulties. Please try again later."
-                    }
-                    
-                logger.info(f"Using workflow definition: {default_workflow_def['name']} (ID: {default_workflow_def['id']})")
-                
-                # Create workflow instance
-                workflow_instance = SupabaseDB.create_workflow_instance(
-                    definition_id=default_workflow_def.get('id'),
-                    user_id=user_id,
-                    status='in_progress'  # Mark as in_progress immediately
-                )
-        
-                if not workflow_instance:
-                    # Log error and return generic message
-                    SupabaseDB.add_log(
-                        message=f"Failed to create workflow instance for user {user_id}",
-                        level='error',
-                        user_id=user_id
-                    )
-                    return {
-                        "message": "Sorry, we're experiencing technical difficulties. Please try again later."
-                    }
-                
-                workflow_id = workflow_instance['id']
-                workflow_def = default_workflow_def
-            else:
-                # Use the active workflow
-                workflow_id = active_workflow['id']
-                
-                # Get the workflow definition for this active workflow instance
-                workflow_def = SupabaseDB.get_workflow_definition(active_workflow['definition_id'])
-                if not workflow_def:
-                    SupabaseDB.add_log(
-                        message=f"Failed to find workflow definition for instance {workflow_id}",
-                        level='error',
-                        user_id=user_id
-                    )
-                    return {
-                        "message": "Sorry, we're experiencing technical difficulties. Please try again later."
-                    }
-                
-                # Use the existing instance
-                workflow_instance = active_workflow
-            
-            # Update message with workflow ID
-            if message:
-                SupabaseDB.add_message(
-                    user_id=user_id,
-                    content=message_content,
-                    direction='inbound',
-                    workflow_id=workflow_id,
-                    metadata={"message_id": message['id']}
-                )
-            
-            # Initialize context or load from existing workflow
-            active_context = workflow_instance.get('context_data', {})
-            
-            # Get full workflow definition details
-            workflow_for_llm = {
-                'id': workflow_id,
-                'instance_id': workflow_id,
-                'definition_id': workflow_def.get('id'),
-                'name': workflow_def.get('name'),
-                'description': workflow_def.get('description'),
-                'steps': workflow_def.get('steps', {}),
-                'status': workflow_instance.get('status', 'in_progress'),
-                'current_step': workflow_instance.get('current_step'),
-                'context_data': active_context
+            # Create the workflow instance with the copied definition
+            workflow_data = {
+                'definition_id': definition_id,
+                'user_id': user_id,
+                'status': status,
+                'started_at': 'now()',
+                'workflow_definition': workflow_def  # Store the full definition
             }
-        
-            # Determine next action
-            action_result = LLMHandler.determine_action(
-                user_details=user,
-                active_context=active_context,
-                current_workflow=workflow_for_llm,
-                available_workflows=ActionHandler.get_workflow_definitions(),
-                messages=messages,
-                action_types=ActionHandler.get_action_types()
-            )
             
-            # Update the workflow instance with any new step
-            if action_result.get('Step'):
-                SupabaseDB.update_workflow_instance(
-                    instance_id=workflow_id,
-                    status='in_progress',
-                    current_step=action_result.get('Step'),
-                    context_data=active_context
-                )
-            
-            # Create action record
-            action = SupabaseDB.create_action(
-                workflow_id=workflow_id,
-                action_type=action_result.get('Next Action', 'Send User Message'),
-                description=action_result.get('Step', 'Processing user message'),
-                thinking=action_result.get('Thinking', 'Determining next action')
-            )
-            
-            if not action:
-                # Log error and return generic message
-                SupabaseDB.add_log(
-                    message=f"Failed to create action for workflow {workflow_id}",
-                    level='error',
-                    user_id=user_id
-                )
-                return {
-                    "message": "Sorry, we're experiencing technical difficulties. Please try again later."
-                }
+            if current_step:
+                workflow_data['current_step'] = current_step
                 
-            # Execute the action
-            return ActionHandler.execute_action(
-                action_type=action_result.get('Next Action', 'Send User Message'),
-                user=user,
-                active_context=active_context,
-                workflow=workflow_for_llm,
-                messages=messages,
-                action_id=action['id']
-            )
-            
+            if context_data:
+                workflow_data['context_data'] = context_data
+                
+            response = supabase.table('workflow_instances').insert(workflow_data).execute()
+            if response.data and len(response.data) > 0:
+                return response.data[0]
+            return None
         except Exception as e:
-            logger.error(f"Error processing message: {e}", exc_info=True)
-            SupabaseDB.add_log(
-                message=f"Error processing message: {str(e)}",
-                level='error',
-                user_id=user_id if locals().get('user_id') else None,
-                details={"error": str(e), "message": message_content}
-            )
-            return {
-                "message": "Sorry, I encountered an error while processing your message. Please try again later.",
-                "error": str(e)
-            }
+            logger.error(f"Error creating workflow instance: {e}")
+            return None
     
     @staticmethod
+    def get_active_workflows_for_user(user_id: str) -> List[Dict]:
+        """
+        Get all active workflow instances for a user, ordered by most recent first.
+        """
+        try:
+            response = supabase.table('workflow_instances') \
+                .select('*') \
+                .eq('user_id', user_id) \
+                .eq('status', 'active') \
+                .order('started_at', desc=True) \
+                .execute()
+            
+            return response.data or []
+        except Exception as e:
+            logger.error(f"Error getting active workflows for user: {e}")
+            return []
+    
+    @staticmethod
+    def add_workflow_definitions(definitions: List[Dict]) -> None:
+        """
+        Add multiple workflow definitions to the database.
+        """
+        try:
+            # Insert the definitions
+            response = supabase.table('workflow_definitions').insert(definitions).execute()
+            
+            # Check for errors
+            if response.error:
+                print(f"Error inserting workflow definitions: {response.error}")
+                return
+            
+            # Log success
+            print(f"Successfully added {len(response.data)} workflow definitions")
+        except Exception as e:
+            print(f"Exception adding workflow definitions: {str(e)}")
+    
+    @staticmethod
+    @log_exceptions
     def execute_action(action_type: str, user: Dict, active_context: Dict,
-                     workflow: Dict, messages: List[Dict], action_id: str) -> Dict:
+                    workflow: Dict, messages: List[Dict], action_id: str, 
+                    active_workflows: List[Dict] = None) -> Dict:
         """
         Execute a specific action.
         
@@ -275,10 +331,15 @@ class ActionHandler:
             workflow: Current workflow being executed
             messages: Message history
             action_id: ID of the action record
+            active_workflows: List of all active workflows for the user (optional)
             
         Returns:
             Result of the action
         """
+        # If active_workflows is None, initialize it with just the current workflow
+        if active_workflows is None:
+            active_workflows = [workflow] if workflow else []
+            
         user_id = user['id']
         
         # Execute based on action type
@@ -310,11 +371,11 @@ class ActionHandler:
                 }
             )
             
-            # Also update the workflow context with any context changes
-            if workflow and workflow.get('instance_id'):
+            # Update the workflow context
+            if workflow and workflow.get('id'):
                 SupabaseDB.update_workflow_instance(
-                    instance_id=workflow['instance_id'],
-                    status='in_progress',
+                    instance_id=workflow['id'],
+                    status='active',
                     current_step=workflow.get('current_step'),
                     context_data=active_context
                 )
@@ -323,6 +384,92 @@ class ActionHandler:
                 "message": response_message,
                 "thinking": message_result.get('Thinking', ''),
                 "step": workflow.get('current_step', 'Processing message'),
+                "action": action_type,
+                "context": active_context
+            }
+        
+        elif action_type == "Transition Workflow":
+            # Get the target workflow type from context
+            target_workflow_type = active_context.get('target_workflow_type')
+            if not target_workflow_type:
+                # No target specified, log error
+                SupabaseDB.add_log(
+                    message="Transition Workflow action called without target_workflow_type in context",
+                    level='error',
+                    user_id=user_id,
+                    action_id=action_id
+                )
+                
+                return {
+                    "message": "I'm not sure what you want to do next. Could you please clarify?",
+                    "thinking": "Missing target workflow for transition",
+                    "step": "Error in workflow transition",
+                    "action": "Error",
+                    "context": active_context
+                }
+            
+            # Get the workflow definition
+            target_workflow_def = ActionHandler.get_workflow_definition_by_name(target_workflow_type)
+            if not target_workflow_def:
+                # Target workflow not found, log error
+                SupabaseDB.add_log(
+                    message=f"Transition Workflow: target workflow '{target_workflow_type}' not found",
+                    level='error',
+                    user_id=user_id,
+                    action_id=action_id
+                )
+                
+                return {
+                    "message": f"I'm sorry, but I don't know how to help with '{target_workflow_type}' right now.",
+                    "thinking": f"Target workflow '{target_workflow_type}' not found",
+                    "step": "Error in workflow transition",
+                    "action": "Error",
+                    "context": active_context
+                }
+            
+            # Create the new workflow instance
+            new_workflow = SupabaseDB.create_workflow_instance(
+                definition_id=target_workflow_def['id'],
+                user_id=user_id,
+                status='active',
+                context_data=active_context  # Transfer existing context
+            )
+            
+            if not new_workflow:
+                # Failed to create new workflow, log error
+                SupabaseDB.add_log(
+                    message=f"Failed to create new workflow instance for '{target_workflow_type}'",
+                    level='error',
+                    user_id=user_id,
+                    action_id=action_id
+                )
+                
+                return {
+                    "message": "I'm having trouble processing your request right now. Could you try again?",
+                    "thinking": "Failed to create new workflow instance",
+                    "step": "Error in workflow transition",
+                    "action": "Error",
+                    "context": active_context
+                }
+            
+            # Update action status
+            SupabaseDB.update_action_status(
+                action_id=action_id,
+                status='Complete',
+                execution_data={
+                    "from_workflow": workflow['id'],
+                    "to_workflow": new_workflow['id'],
+                    "workflow_type": target_workflow_type
+                }
+            )
+            
+            # Generate a message about the transition
+            workflow_description = target_workflow_def.get('description', target_workflow_type)
+            
+            return {
+                "message": f"I'll help you with {workflow_description}. Let's get started.",
+                "thinking": f"Transitioned to {target_workflow_type} workflow",
+                "step": "Workflow transition complete",
                 "action": action_type,
                 "context": active_context
             }

@@ -579,3 +579,78 @@ class SupabaseDB:
         except Exception as e:
             logger.error(f"Error cancelling workflow: {e}")
             raise
+        
+    @staticmethod
+    def update_message(message_id: str, workflow_id: str = None, content: str = None,
+                    direction: str = None, metadata: Dict = None) -> bool:
+        """
+        Update an existing message.
+        
+        Args:
+            message_id: ID of the message to update
+            workflow_id: Optional new workflow ID
+            content: Optional new message content
+            direction: Optional new direction
+            metadata: Optional new metadata
+            
+        Returns:
+            True if update successful, False otherwise
+        """
+        try:
+            update_data = {}
+            
+            if workflow_id:
+                update_data['related_workflow_id'] = workflow_id
+                
+            if content:
+                update_data['message_content'] = content
+                
+            if direction:
+                update_data['direction'] = direction
+                
+            if metadata:
+                update_data['metadata'] = metadata
+                
+            if not update_data:
+                return True  # Nothing to update
+                
+            response = supabase.table('messages').update(update_data).eq('id', message_id).execute()
+            return bool(response.data)
+        except Exception as e:
+            logger.error(f"Error updating message: {e}")
+            return False
+
+    @staticmethod
+    def get_active_workflows_for_user(user_id: str) -> List[Dict]:
+        try:
+            response = supabase.table('workflow_instances') \
+                .select('*') \
+                .eq('user_id', user_id) \
+                .eq('status', 'active') \
+                .order('started_at', desc=True) \
+                .execute()
+            
+            return response.data or []
+        except Exception as e:
+            logger.error(f"Error getting active workflows for user: {e}")
+            return []
+        
+    @staticmethod
+    def get_materialized_view(view_name: str) -> Optional[Dict]:
+        """
+        Get a materialized view by name.
+        
+        Args:
+            view_name: Name of the materialized view
+            
+        Returns:
+            View content or None if not found
+        """
+        try:
+            # For MVP, return a simple placeholder
+            # In a real implementation, you would query a views table
+            # or generate the view on demand
+            return {}
+        except Exception as e:
+            logger.error(f"Error getting materialized view: {e}")
+            return None

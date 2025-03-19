@@ -1,5 +1,3 @@
-# app/models/groq_langchain.py
-
 """
 LangChain integration module for Groq API.
 

@@ -2,10 +2,12 @@
 API endpoints for the Directory Chatbot.
 """
 
-from typing import Dict, Any, List, Optional
 from fastapi import FastAPI, Request, HTTPException, Depends, Header, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, PlainTextResponse
+import traceback
+from typing import Dict, Any, List, Optional
 from pydantic import BaseModel
 import json
 import logging
@@ -342,3 +344,36 @@ async def healthcheck():
         "database": db_status,
         "timestamp": supabase.table('_rpc').select().execute().data
     }
+    
+# Add exception handler
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """
+    Global exception handler with detailed error information.
+    """
+    # Get detailed traceback
+    tb_frames = traceback.extract_tb(exc.__traceback__)
+    
+    # Find the most relevant frame (closest to the error)
+    relevant_frame = tb_frames[-1] if tb_frames else None
+    
+    # Extract location information
+    if relevant_frame:
+        file = relevant_frame.filename.split('/')[-1]  # Just the filename
+        line = relevant_frame.lineno
+        function = relevant_frame.name
+        location = f"{file}:{line} in {function}()"
+    else:
+        location = "unknown location"
+    
+    # Log the error
+    logger.error(f"Unhandled exception at {location}: {str(exc)}\n{traceback.format_exc()}")
+    
+    # Return a user-friendly error response
+    return JSONResponse(
+        status_code=500,
+        content={
+            "message": "Sorry, I encountered an error while processing your message. Please try again later.",
+            "error": f"{str(exc)} at {location}"
+        }
+    )
