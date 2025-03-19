@@ -70,7 +70,7 @@ class ActionHandler:
                     }
                     
                 # Create workflow instance
-                new_workflow = SupabaseDB.create_workflow_instance(
+                new_workflow = ActionHandler.create_workflow_instance(
                     definition_id=determine_workflow_def.get('id'),
                     user_id=user_id,
                     status='active'
@@ -428,7 +428,7 @@ class ActionHandler:
                 }
             
             # Create the new workflow instance
-            new_workflow = SupabaseDB.create_workflow_instance(
+            new_workflow = ActionHandler.create_workflow_instance(
                 definition_id=target_workflow_def['id'],
                 user_id=user_id,
                 status='active',
