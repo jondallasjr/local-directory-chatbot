@@ -3,12 +3,16 @@ Supabase client module for database operations.
 """
 
 import json
+import logging
 from typing import Dict, List, Optional, Any, Union
 import uuid
 
 from supabase import create_client, Client
 
 from app.config.settings import SUPABASE_URL, SUPABASE_KEY
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 # Initialize Supabase client
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -32,7 +36,7 @@ class SupabaseDB:
                 return response.data[0]
             return None
         except Exception as e:
-            print(f"Error getting user: {e}")
+            logger.error(f"Error getting user: {e}")
             return None
     
     @staticmethod
@@ -51,7 +55,7 @@ class SupabaseDB:
                 return response.data[0]
             return None
         except Exception as e:
-            print(f"Error creating user: {e}")
+            logger.error(f"Error creating user: {e}")
             return None
     
     @staticmethod
@@ -91,7 +95,7 @@ class SupabaseDB:
                 return response.data[0]
             return None
         except Exception as e:
-            print(f"Error adding message: {e}")
+            logger.error(f"Error adding message: {e}")
             return None
     
     @staticmethod
@@ -108,7 +112,7 @@ class SupabaseDB:
                               .execute()
             return response.data or []
         except Exception as e:
-            print(f"Error getting messages: {e}")
+            logger.error(f"Error getting messages: {e}")
             return []
     
     @staticmethod
@@ -142,7 +146,7 @@ class SupabaseDB:
                 return response.data[0]
             return None
         except Exception as e:
-            print(f"Error creating/updating entity: {e}")
+            logger.error(f"Error creating/updating entity: {e}")
             return None
     
     @staticmethod
@@ -164,41 +168,71 @@ class SupabaseDB:
             response = query.limit(limit).execute()
             return response.data or []
         except Exception as e:
-            print(f"Error searching entities: {e}")
+            logger.error(f"Error searching entities: {e}")
             return []
     
     @staticmethod
-    def get_or_create_workflow(name: str, user_id: str, 
-                             description: Optional[str] = None,
-                             steps: Optional[Dict] = None) -> Optional[Dict]:
+    def get_workflow_definitions() -> List[Dict]:
         """
-        Get an existing workflow or create a new one.
+        Get all workflow definitions.
         """
         try:
-            # For MVP 0.01, we simplify by creating a new workflow instance each time
-            workflow_data = {
-                'name': name,
-                'description': description or f"Workflow {name}",
-                'steps': steps or {},
-                'user_id': user_id,
-                'status': 'new',
-                'started_at': 'now()'
-            }
-            
-            response = supabase.table('workflows').insert(workflow_data).execute()
+            response = supabase.table('workflow_definitions').select('*').eq('active', True).execute()
+            return response.data or []
+        except Exception as e:
+            logger.error(f"Error getting workflow definitions: {e}")
+            return []
+    
+    @staticmethod
+    def get_workflow_definition(definition_id: str) -> Optional[Dict]:
+        """
+        Get a specific workflow definition.
+        """
+        try:
+            response = supabase.table('workflow_definitions').select('*').eq('id', definition_id).execute()
             if response.data and len(response.data) > 0:
                 return response.data[0]
             return None
         except Exception as e:
-            print(f"Error creating workflow: {e}")
+            logger.error(f"Error getting workflow definition: {e}")
             return None
     
     @staticmethod
-    def update_workflow_status(workflow_id: str, status: str, 
-                             current_step: Optional[str] = None,
-                             context_data: Optional[Dict] = None) -> bool:
+    def create_workflow_instance(definition_id: str, user_id: str, 
+                               status: str = 'new',
+                               current_step: Optional[str] = None,
+                               context_data: Optional[Dict] = None) -> Optional[Dict]:
         """
-        Update a workflow's status and optionally its current step and context.
+        Create a new workflow instance.
+        """
+        try:
+            workflow_data = {
+                'definition_id': definition_id,
+                'user_id': user_id,
+                'status': status,
+                'started_at': 'now()'
+            }
+            
+            if current_step:
+                workflow_data['current_step'] = current_step
+                
+            if context_data:
+                workflow_data['context_data'] = context_data
+                
+            response = supabase.table('workflow_instances').insert(workflow_data).execute()
+            if response.data and len(response.data) > 0:
+                return response.data[0]
+            return None
+        except Exception as e:
+            logger.error(f"Error creating workflow instance: {e}")
+            return None
+    
+    @staticmethod
+    def update_workflow_instance(instance_id: str, status: str, 
+                               current_step: Optional[str] = None,
+                               context_data: Optional[Dict] = None) -> bool:
+        """
+        Update a workflow instance.
         """
         try:
             update_data = {'status': status}
@@ -207,11 +241,23 @@ class SupabaseDB:
             if context_data:
                 update_data['context_data'] = context_data
                 
-            response = supabase.table('workflows').update(update_data).eq('id', workflow_id).execute()
+            response = supabase.table('workflow_instances').update(update_data).eq('id', instance_id).execute()
             return bool(response.data)
         except Exception as e:
-            print(f"Error updating workflow: {e}")
+            logger.error(f"Error updating workflow instance: {e}")
             return False
+    
+    @staticmethod
+    def get_action_types() -> List[Dict]:
+        """
+        Get all action types.
+        """
+        try:
+            response = supabase.table('action_types').select('*').execute()
+            return response.data or []
+        except Exception as e:
+            logger.error(f"Error getting action types: {e}")
+            return []
     
     @staticmethod
     def create_action(workflow_id: str, action_type: str, 
@@ -223,19 +269,21 @@ class SupabaseDB:
         try:
             action_data = {
                 'workflow_id': workflow_id,
-                'action_type': action_type,
+                'action_type': action_type,  # Use action_type directly instead of action_type_id
                 'description': description,
                 'thinking': thinking,
                 'execution_data': execution_data or {},
                 'status': 'New'
             }
             
+            # No longer trying to lookup action_type_id
+                
             response = supabase.table('actions').insert(action_data).execute()
             if response.data and len(response.data) > 0:
                 return response.data[0]
             return None
         except Exception as e:
-            print(f"Error creating action: {e}")
+            logger.error(f"Error creating action: {e}")
             return None
     
     @staticmethod
@@ -258,7 +306,7 @@ class SupabaseDB:
             response = supabase.table('actions').update(update_data).eq('id', action_id).execute()
             return bool(response.data)
         except Exception as e:
-            print(f"Error updating action: {e}")
+            logger.error(f"Error updating action: {e}")
             return False
     
     @staticmethod
@@ -287,5 +335,247 @@ class SupabaseDB:
                 return response.data[0]
             return None
         except Exception as e:
-            print(f"Error adding log: {e}")
+            logger.error(f"Error adding log: {e}")
             return None
+        
+    @staticmethod
+    def complete_workflow(instance_id: str, context_data: Optional[Dict] = None) -> bool:
+        """
+        Mark a workflow as completed.
+        
+        Args:
+            instance_id: ID of the workflow instance
+            context_data: Final context data (optional)
+            
+        Returns:
+            True if update was successful, False otherwise
+        """
+        try:
+            update_data = {
+                'status': 'completed',
+                'completed_at': 'now()'
+            }
+            
+            if context_data:
+                update_data['context_data'] = context_data
+                
+            response = supabase.table('workflow_instances').update(update_data).eq('id', instance_id).execute()
+            return bool(response.data)
+        except Exception as e:
+            logger.error(f"Error completing workflow: {e}")
+            raise    
+    
+    @staticmethod
+    def get_latest_action_for_workflow(workflow_id: str) -> Optional[Dict]:
+        """
+        Get the most recent action for a workflow.
+        
+        Args:
+            workflow_id: ID of the workflow
+            
+        Returns:
+            Latest action or None if no actions found
+        """
+        try:
+            response = supabase.table('actions').select('*').eq('workflow_id', workflow_id) \
+                              .order('created_at', desc=True).limit(1).execute()
+            if response.data and len(response.data) > 0:
+                return response.data[0]
+            return None
+        except Exception as e:
+            logger.error(f"Error getting latest action for workflow: {e}")
+            raise    
+        
+    @staticmethod
+    def get_actions_for_workflow(workflow_id: str, limit: int = 10) -> List[Dict]:
+        """
+        Get actions for a specific workflow.
+        
+        Args:
+            workflow_id: ID of the workflow
+            limit: Maximum number of actions to return
+            
+        Returns:
+            List of actions
+        """
+        try:
+            response = supabase.table('actions').select('*').eq('workflow_id', workflow_id) \
+                              .order('created_at', desc=True).limit(limit).execute()
+            return response.data or []
+        except Exception as e:
+            logger.error(f"Error getting actions for workflow: {e}")
+            raise    
+        
+    @staticmethod
+    def get_workflow_instance(instance_id: str) -> Optional[Dict]:
+        """
+        Get a specific workflow instance.
+        
+        Args:
+            instance_id: ID of the workflow instance
+            
+        Returns:
+            Workflow instance or None if not found
+        """
+        try:
+            response = supabase.table('workflow_instances').select('*').eq('id', instance_id).execute()
+            if response.data and len(response.data) > 0:
+                return response.data[0]
+            return None
+        except Exception as e:
+            logger.error(f"Error getting workflow instance: {e}")
+            raise
+        
+    @staticmethod
+    def get_workflow_instances_for_user(user_id: str, status: Optional[str] = None, 
+                                      limit: int = 5) -> List[Dict]:
+        """
+        Get workflow instances for a user, optionally filtered by status.
+        
+        Args:
+            user_id: ID of the user
+            status: Status to filter by (optional)
+            limit: Maximum number of instances to return
+            
+        Returns:
+            List of workflow instances
+        """
+        try:
+            query = supabase.table('workflow_instances').select('*').eq('user_id', user_id)
+            
+            if status:
+                query = query.eq('status', status)
+                
+            response = query.order('started_at', desc=True).limit(limit).execute()
+            return response.data or []
+        except Exception as e:
+            logger.error(f"Error getting workflow instances for user: {e}")
+            raise
+        
+    @staticmethod
+    def get_full_workflow(instance_id: str) -> Optional[Dict]:
+        """
+        Get a workflow instance with its associated definition.
+        
+        Args:
+            instance_id: ID of the workflow instance
+            
+        Returns:
+            Combined workflow data or None if not found
+        """
+        try:
+            # Get the workflow instance
+            instance_response = supabase.table('workflow_instances').select('*').eq('id', instance_id).execute()
+            if not instance_response.data or len(instance_response.data) == 0:
+                logger.error(f"Workflow instance not found: {instance_id}")
+                return None
+                
+            instance = instance_response.data[0]
+            
+            # Get the associated workflow definition
+            definition_id = instance.get('definition_id')
+            if not definition_id:
+                logger.error(f"Workflow instance {instance_id} has no definition_id")
+                return instance
+                
+            definition_response = supabase.table('workflow_definitions').select('*').eq('id', definition_id).execute()
+            if not definition_response.data or len(definition_response.data) == 0:
+                logger.error(f"Workflow definition not found: {definition_id}")
+                return instance
+                
+            definition = definition_response.data[0]
+            
+            # Combine the data
+            return {
+                'id': instance_id,
+                'instance_id': instance_id,
+                'definition_id': definition_id,
+                'name': definition.get('name'),
+                'description': definition.get('description'),
+                'steps': definition.get('steps', {}),
+                'status': instance.get('status'),
+                'current_step': instance.get('current_step'),
+                'context_data': instance.get('context_data', {}),
+                'user_id': instance.get('user_id'),
+                'started_at': instance.get('started_at'),
+                'completed_at': instance.get('completed_at')
+            }
+        except Exception as e:
+            logger.error(f"Error getting full workflow: {e}")
+            raise
+    
+    @staticmethod
+    def error_workflow(instance_id: str, error_message: str, context_data: Optional[Dict] = None) -> bool:
+        """
+        Mark a workflow as errored with an error message.
+        
+        Args:
+            instance_id: ID of the workflow instance
+            error_message: Error message to store
+            context_data: Final context data (optional)
+            
+        Returns:
+            True if update was successful, False otherwise
+        """
+        try:
+            update_data = {
+                'status': 'error',
+                'error_message': error_message,
+                'completed_at': 'now()'
+            }
+            
+            if context_data:
+                update_data['context_data'] = context_data
+                
+            response = supabase.table('workflow_instances').update(update_data).eq('id', instance_id).execute()
+            return bool(response.data)
+        except Exception as e:
+            logger.error(f"Error marking workflow as errored: {e}")
+            raise
+    
+    @staticmethod
+    def get_entity_by_id(entity_id: str) -> Optional[Dict]:
+        """
+        Get an entity by its ID.
+        
+        Args:
+            entity_id: ID of the entity
+            
+        Returns:
+            Entity or None if not found
+        """
+        try:
+            response = supabase.table('entities').select('*').eq('id', entity_id).execute()
+            if response.data and len(response.data) > 0:
+                return response.data[0]
+            return None
+        except Exception as e:
+            logger.error(f"Error getting entity: {e}")
+            raise
+            
+    @staticmethod
+    def cancel_workflow(instance_id: str, reason: str = "Cancelled by system") -> bool:
+        """
+        Cancel a workflow instance.
+        
+        Args:
+            instance_id: ID of the workflow instance
+            reason: Reason for cancellation
+            
+        Returns:
+            True if update was successful, False otherwise
+        """
+        try:
+            update_data = {
+                'status': 'cancelled',
+                'completed_at': 'now()',
+                'context_data': {
+                    'cancellation_reason': reason
+                }
+            }
+                
+            response = supabase.table('workflow_instances').update(update_data).eq('id', instance_id).execute()
+            return bool(response.data)
+        except Exception as e:
+            logger.error(f"Error cancelling workflow: {e}")
+            raise

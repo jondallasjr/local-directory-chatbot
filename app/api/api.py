@@ -10,7 +10,8 @@ from pydantic import BaseModel
 import json
 import logging
 
-from app.workflows.action_handler import ActionHandler, ACTION_TYPES, DEFAULT_WORKFLOWS
+# Updated import - remove ACTION_TYPES and DEFAULT_WORKFLOWS
+from app.workflows.action_handler import ActionHandler
 from app.api.twilio_handler import TwilioHandler
 from app.database.supabase_client import SupabaseDB, supabase
 
@@ -104,10 +105,10 @@ async def simulate_message(
         user = SupabaseDB.get_user_by_phone(data.phone_number)
         if user:
             # Get latest workflow for this user
-            workflow_response = supabase.table('workflows') \
+            workflow_response = supabase.table('workflow_instances') \
                 .select('*') \
                 .eq('user_id', user['id']) \
-                .order('created_at', desc=True) \
+                .order('started_at', desc=True) \
                 .limit(1) \
                 .execute()
             
@@ -188,7 +189,7 @@ async def get_user_workflows(
     Get workflows for a specific user.
     """
     try:
-        response = supabase.table('workflows') \
+        response = supabase.table('workflow_instances') \
                           .select('*') \
                           .eq('user_id', user_id) \
                           .order('created_at', desc=True) \
@@ -299,7 +300,13 @@ async def get_action_types(
     """
     Get available action types.
     """
-    return {"action_types": ACTION_TYPES}
+    try:
+        # Use the ActionHandler to get action types from database
+        action_types = ActionHandler.get_action_types()
+        return {"action_types": action_types}
+    except Exception as e:
+        logger.error(f"Error getting action types: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/workflows")
 async def get_workflows(
@@ -308,7 +315,13 @@ async def get_workflows(
     """
     Get available workflow definitions.
     """
-    return {"workflows": DEFAULT_WORKFLOWS}
+    try:
+        # Use the ActionHandler to get workflow definitions from database
+        workflows = ActionHandler.get_workflow_definitions()
+        return {"workflows": workflows}
+    except Exception as e:
+        logger.error(f"Error getting workflows: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/healthcheck")
 async def healthcheck():

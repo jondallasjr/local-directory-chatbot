@@ -100,8 +100,10 @@ Determine what the next ACTION should be.
 </ACTIVE CONTEXT>
 
 <CURRENT WORKFLOW>
-Workflow Name:
-{workflow_name}
+Workflow Name: {workflow_name}
+Workflow ID: {workflow_id}
+Current Status: {workflow_status}
+Current Step: {current_step}
 
 Workflow Steps:
 {workflow_steps}
@@ -148,8 +150,10 @@ Write a message to the User following the WRITING GUIDELINES.
 </ACTIVE CONTEXT>
 
 <CURRENT WORKFLOW>
-Workflow Name:
-{workflow_name}
+Workflow Name: {workflow_name}
+Workflow ID: {workflow_id}
+Current Status: {workflow_status}
+Current Step: {current_step}
 
 Workflow Steps:
 {workflow_steps}
@@ -184,8 +188,10 @@ Determine the appropriate JSON to upsert appropriate to the knowledgebase.
 </ACTIVE CONTEXT>
 
 <CURRENT WORKFLOW>
-Workflow Name:
-{workflow_name}
+Workflow Name: {workflow_name}
+Workflow ID: {workflow_id}
+Current Status: {workflow_status}
+Current Step: {current_step}
 
 Workflow Steps:
 {workflow_steps}
@@ -242,7 +248,10 @@ Determine what context is relevant for the current conversation.
 </RECENT MESSAGES>
 
 <USER WORKFLOW>
-{current_workflow}
+Workflow Name: {workflow_name}
+Workflow ID: {workflow_id}
+Current Status: {workflow_status}
+Current Step: {current_step}
 </USER WORKFLOW>
 
 IMPORTANT: If the user is adding an event, carefully extract the following details from their messages:
@@ -294,6 +303,38 @@ class LLMUtils:
             timestamp = msg.get('timestamp', '')
             messages_str += f"{direction} [{timestamp}]: {content}\n"
         return messages_str
+    
+    @staticmethod
+    def format_workflow_list(workflows: List[Dict]) -> str:
+        """
+        Format a list of workflow definitions.
+        
+        Args:
+            workflows: List of workflow definition dictionaries
+            
+        Returns:
+            Formatted workflow list string
+        """
+        workflows_str = ""
+        for wf in workflows:
+            name = wf.get('name', 'Unknown')
+            desc = wf.get('description', 'No description')
+            cat = wf.get('category', 'general')
+            workflows_str += f"- {name} ({cat}): {desc}\n"
+        return workflows_str
+    
+    @staticmethod
+    def format_action_types(action_types: List[str]) -> str:
+        """
+        Format a list of action types.
+        
+        Args:
+            action_types: List of action type strings
+            
+        Returns:
+            Formatted action types string
+        """
+        return "\n".join([f"- {action_type}" for action_type in action_types])
     
     @staticmethod
     def extract_json_from_response(content: str) -> str:
@@ -547,26 +588,39 @@ class ActionDeterminationHandler(PromptHandler):
                     logger.info(f"Extracted event_name: {event_name}")
         
         active_context_str = json.dumps(active_context, indent=2)
+        
+        # Extract workflow details with improved error handling
         workflow_name = current_workflow.get('name', 'No Workflow')
-        workflow_steps = json.dumps(current_workflow.get('steps', {}), indent=2)
+        workflow_id = current_workflow.get('id', 'unknown')
+        workflow_status = current_workflow.get('status', 'unknown')
+        current_step = current_workflow.get('current_step', 'Initial')
+        
+        # Format workflow steps (handle both string and dict formats)
+        workflow_steps = current_workflow.get('steps', {})
+        if isinstance(workflow_steps, dict):
+            workflow_steps_str = json.dumps(workflow_steps, indent=2)
+        elif isinstance(workflow_steps, str):
+            workflow_steps_str = workflow_steps
+        else:
+            workflow_steps_str = str(workflow_steps)
         
         # Format available workflows
-        available_workflows_str = "\n".join([
-            f"{workflow.get('name')}: {workflow.get('description', 'No description')}"
-            for workflow in available_workflows
-        ])
+        available_workflows_str = LLMUtils.format_workflow_list(available_workflows)
         
         # Format messages
         messages_str = LLMUtils.format_messages_history(messages)
         
         # Format action types
-        action_types_str = "\n".join(action_types)
+        action_types_str = LLMUtils.format_action_types(action_types)
         
         return self.invoke(
             user_entity_json=user_entity_json,
             active_context=active_context_str,
             workflow_name=workflow_name,
-            workflow_steps=workflow_steps,
+            workflow_id=workflow_id,
+            workflow_status=workflow_status,
+            current_step=current_step,
+            workflow_steps=workflow_steps_str,
             available_workflows=available_workflows_str,
             messages=messages_str,
             action_types=action_types_str
@@ -613,15 +667,32 @@ class MessageGenerationHandler(PromptHandler):
         """
         user_entity_json = json.dumps(user_details.get('metadata', {}), indent=2)
         active_context_str = json.dumps(active_context, indent=2)
+        
+        # Extract workflow details with improved error handling
         workflow_name = current_workflow.get('name', 'No Workflow')
-        workflow_steps = json.dumps(current_workflow.get('steps', {}), indent=2)
+        workflow_id = current_workflow.get('id', 'unknown')
+        workflow_status = current_workflow.get('status', 'unknown')
+        current_step = current_workflow.get('current_step', 'Initial')
+        
+        # Format workflow steps (handle both string and dict formats)
+        workflow_steps = current_workflow.get('steps', {})
+        if isinstance(workflow_steps, dict):
+            workflow_steps_str = json.dumps(workflow_steps, indent=2)
+        elif isinstance(workflow_steps, str):
+            workflow_steps_str = workflow_steps
+        else:
+            workflow_steps_str = str(workflow_steps)
+            
         messages_str = LLMUtils.format_messages_history(messages)
         
         return self.invoke(
             user_entity_json=user_entity_json,
             active_context=active_context_str,
             workflow_name=workflow_name,
-            workflow_steps=workflow_steps,
+            workflow_id=workflow_id,
+            workflow_status=workflow_status,
+            current_step=current_step,
+            workflow_steps=workflow_steps_str,
             messages=messages_str
         )
     
@@ -662,15 +733,32 @@ class KnowledgebaseUpsertHandler(PromptHandler):
         """
         user_entity_json = json.dumps(user_details.get('metadata', {}), indent=2)
         active_context_str = json.dumps(active_context, indent=2)
+        
+        # Extract workflow details with improved error handling
         workflow_name = current_workflow.get('name', 'No Workflow')
-        workflow_steps = json.dumps(current_workflow.get('steps', {}), indent=2)
+        workflow_id = current_workflow.get('id', 'unknown')
+        workflow_status = current_workflow.get('status', 'unknown')
+        current_step = current_workflow.get('current_step', 'Initial')
+        
+        # Format workflow steps (handle both string and dict formats)
+        workflow_steps = current_workflow.get('steps', {})
+        if isinstance(workflow_steps, dict):
+            workflow_steps_str = json.dumps(workflow_steps, indent=2)
+        elif isinstance(workflow_steps, str):
+            workflow_steps_str = workflow_steps
+        else:
+            workflow_steps_str = str(workflow_steps)
+            
         messages_str = LLMUtils.format_messages_history(messages)
         
         return self.invoke(
             user_entity_json=user_entity_json,
             active_context=active_context_str,
             workflow_name=workflow_name,
-            workflow_steps=workflow_steps,
+            workflow_id=workflow_id,
+            workflow_status=workflow_status,
+            current_step=current_step,
+            workflow_steps=workflow_steps_str,
             messages=messages_str
         )
     
@@ -759,12 +847,20 @@ class ContextManagementHandler(PromptHandler):
         """
         current_context_str = json.dumps(current_context, indent=2)
         messages_str = LLMUtils.format_messages_history(messages)
-        current_workflow_str = json.dumps(current_workflow, indent=2)
+        
+        # Extract workflow details with improved error handling
+        workflow_name = current_workflow.get('name', 'No Workflow')
+        workflow_id = current_workflow.get('id', 'unknown')
+        workflow_status = current_workflow.get('status', 'unknown')
+        current_step = current_workflow.get('current_step', 'Initial')
         
         return self.invoke(
             current_context=current_context_str,
             messages=messages_str,
-            current_workflow=current_workflow_str
+            workflow_name=workflow_name,
+            workflow_id=workflow_id,
+            workflow_status=workflow_status,
+            current_step=current_step
         )
     
     def fallback_response(self) -> Dict:
@@ -795,35 +891,36 @@ class LLMHandler:
     _query_handler = None
     _context_handler = None
     
-    @property
-    def action_handler(self) -> ActionDeterminationHandler:
-        if not LLMHandler._action_handler:
-            LLMHandler._action_handler = ActionDeterminationHandler()
-        return LLMHandler._action_handler
+    @classmethod
+    def action_handler(cls) -> ActionDeterminationHandler:
+        if not cls._action_handler:
+            if not cls._action_handler:
+                cls._action_handler = ActionDeterminationHandler()
+        return cls._action_handler
     
-    @property
-    def message_handler(self) -> MessageGenerationHandler:
-        if not LLMHandler._message_handler:
-            LLMHandler._message_handler = MessageGenerationHandler()
-        return LLMHandler._message_handler
+    @classmethod
+    def message_handler(cls) -> MessageGenerationHandler:
+        if not cls._message_handler:
+            cls._message_handler = MessageGenerationHandler()
+        return cls._message_handler
     
-    @property
-    def upsert_handler(self) -> KnowledgebaseUpsertHandler:
-        if not LLMHandler._upsert_handler:
-            LLMHandler._upsert_handler = KnowledgebaseUpsertHandler()
-        return LLMHandler._upsert_handler
+    @classmethod
+    def upsert_handler(cls) -> KnowledgebaseUpsertHandler:
+        if not cls._upsert_handler:
+            cls._upsert_handler = KnowledgebaseUpsertHandler()
+        return cls._upsert_handler
     
-    @property
-    def query_handler(self) -> QueryGenerationHandler:
-        if not LLMHandler._query_handler:
-            LLMHandler._query_handler = QueryGenerationHandler()
-        return LLMHandler._query_handler
+    @classmethod
+    def query_handler(cls) -> QueryGenerationHandler:
+        if not cls._query_handler:
+            cls._query_handler = QueryGenerationHandler()
+        return cls._query_handler
     
-    @property
-    def context_handler(self) -> ContextManagementHandler:
-        if not LLMHandler._context_handler:
-            LLMHandler._context_handler = ContextManagementHandler()
-        return LLMHandler._context_handler
+    @classmethod
+    def context_handler(cls) -> ContextManagementHandler:
+        if not cls._context_handler:
+            cls._context_handler = ContextManagementHandler()
+        return cls._context_handler
     
     @staticmethod
     def determine_action(user_details: Dict, active_context: Dict, 
@@ -832,7 +929,7 @@ class LLMHandler:
         """
         Determine the next action based on current context.
         """
-        handler = LLMHandler().action_handler
+        handler = LLMHandler.action_handler()
         return handler.determine_action(
             user_details, active_context, current_workflow, 
             available_workflows, messages, action_types
@@ -844,7 +941,7 @@ class LLMHandler:
         """
         Generate a message to send to the user.
         """
-        handler = LLMHandler().message_handler
+        handler = LLMHandler.message_handler()
         return handler.generate_message(
             user_details, active_context, current_workflow, messages
         )
@@ -855,7 +952,7 @@ class LLMHandler:
         """
         Determine what data to upsert to the knowledgebase.
         """
-        handler = LLMHandler().upsert_handler
+        handler = LLMHandler.upsert_handler()
         return handler.determine_upsert(
             user_details, active_context, current_workflow, messages
         )
@@ -865,7 +962,7 @@ class LLMHandler:
         """
         Generate a database query from natural language.
         """
-        handler = LLMHandler().query_handler
+        handler = LLMHandler.query_handler()
         return handler.generate_query(user_query, entity_types, db_schema)
     
     @staticmethod
@@ -873,7 +970,7 @@ class LLMHandler:
         """
         Determine relevant context updates for the conversation.
         """
-        handler = LLMHandler().context_handler
+        handler = LLMHandler.context_handler()
         return handler.update_context(current_context, messages, current_workflow)
 
 
@@ -903,7 +1000,13 @@ if __name__ == "__main__":
             result = handler.determine_action(
                 user_details={"metadata": {}},
                 active_context={},
-                current_workflow={"name": "determine_workflow", "steps": {"1": "Analyze user message"}},
+                current_workflow={
+                    "id": "test-workflow-123",
+                    "name": "determine_workflow", 
+                    "steps": {"1": "Analyze user message"},
+                    "status": "in_progress",
+                    "current_step": "Initial"
+                },
                 available_workflows=[],
                 messages=[{"direction": "inbound", "message_content": "Hello", "timestamp": "2023-01-01"}],
                 action_types=["Send User Message", "Wait"]
