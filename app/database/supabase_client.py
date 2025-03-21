@@ -654,3 +654,83 @@ class SupabaseDB:
         except Exception as e:
             logger.error(f"Error getting materialized view: {e}")
             return None
+        
+    @staticmethod
+    def create_entity(entity_type: str, entity_name: str, created_by: str,
+                    parent_id: Optional[str] = None, attributes: Dict = None,
+                    tags: List[str] = None, verification_status: str = 'unverified') -> Optional[str]:
+        """
+        Create a new entity in the hierarchical structure.
+        """
+        try:
+            attributes = attributes or {}
+            tags = tags or []
+            
+            # Call the database function
+            response = supabase.rpc('create_entity', {
+                'p_entity_type': entity_type,
+                'p_entity_name': entity_name,
+                'p_created_by': created_by,
+                'p_parent_id': parent_id,
+                'p_attributes': attributes,
+                'p_tags': tags,
+                'p_verification_status': verification_status
+            }).execute()
+            
+            if response.data:
+                return response.data[0]
+            return None
+        except Exception as e:
+            logger.error(f"Error creating entity: {e}")
+            return None
+
+    @staticmethod
+    def update_entity_attributes(entity_id: str, attributes: Dict) -> bool:
+        """
+        Update an entity's attributes.
+        """
+        try:
+            response = supabase.rpc('update_entity_attributes', {
+                'p_entity_id': entity_id,
+                'p_attributes': attributes
+            }).execute()
+            
+            return bool(response.data)
+        except Exception as e:
+            logger.error(f"Error updating entity attributes: {e}")
+            return False
+        
+    @staticmethod
+    def search_entities_with_context(search_text: str, entity_types: List[str] = None,
+                                width: int = 2, limit: int = 10) -> Dict:
+        """
+        Search for entities with hierarchical context.
+        """
+        try:
+            response = supabase.rpc('search_entities', {
+                'p_search_text': search_text,
+                'p_entity_types': entity_types,
+                'p_width': width,
+                'p_limit': limit
+            }).execute()
+            
+            return response.data or {'results': [], 'count': 0}
+        except Exception as e:
+            logger.error(f"Error searching entities: {e}")
+            return {'error': str(e), 'results': [], 'count': 0}
+
+    @staticmethod
+    def get_entity_with_context(entity_id: str, max_depth: int = 2) -> Dict:
+        """
+        Get an entity with its hierarchical context.
+        """
+        try:
+            response = supabase.rpc('get_entity_with_context', {
+                'p_entity_id': entity_id,
+                'p_max_depth': max_depth
+            }).execute()
+            
+            return response.data or {}
+        except Exception as e:
+            logger.error(f"Error getting entity with context: {e}")
+            return {'error': str(e)}

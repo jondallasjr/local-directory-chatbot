@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -13,21 +14,25 @@
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
             overflow: hidden;
         }
+
         .chat-header {
             background-color: #075E54;
             color: white;
             padding: 15px;
         }
+
         .chat-body {
             height: 400px;
             overflow-y: auto;
             padding: 15px;
             background-color: #E5DDD5;
         }
+
         .chat-footer {
             background-color: #F0F0F0;
             padding: 10px;
         }
+
         .message {
             border-radius: 10px;
             padding: 8px 15px;
@@ -35,25 +40,31 @@
             max-width: 70%;
             word-wrap: break-word;
         }
+
         .user-message {
             background-color: #DCF8C6;
             margin-left: auto;
         }
+
         .bot-message {
             background-color: white;
         }
+
         .action-panel {
             border-left: 1px solid #dee2e6;
             padding-left: 15px;
             height: 400px;
             overflow-y: auto;
         }
+
         .phone-selector {
             margin-bottom: 20px;
         }
+
         .action-card {
             margin-bottom: 10px;
         }
+
         .json-display {
             font-family: monospace;
             font-size: 0.9em;
@@ -64,6 +75,7 @@
             border-radius: 5px;
             margin: 10px 0;
         }
+
         .debug-log {
             font-family: monospace;
             font-size: 0.8em;
@@ -74,20 +86,31 @@
             border-radius: 5px;
             margin-top: 20px;
         }
+
         .log-entry {
             margin-bottom: 5px;
             border-bottom: 1px solid #eee;
             padding-bottom: 5px;
         }
-        .log-info { color: #0d6efd; }
-        .log-error { color: #dc3545; }
-        .log-warning { color: #ffc107; }
+
+        .log-info {
+            color: #0d6efd;
+        }
+
+        .log-error {
+            color: #dc3545;
+        }
+
+        .log-warning {
+            color: #ffc107;
+        }
     </style>
 </head>
+
 <body>
     <div class="container mt-4 mb-4">
         <h1 class="text-center mb-4">Directory Chatbot WhatsApp Simulator</h1>
-        
+
         <div class="row mb-3">
             <div class="col-md-6">
                 <div class="phone-selector">
@@ -105,7 +128,7 @@
                 </div>
             </div>
         </div>
-        
+
         <div class="row">
             <div class="col-md-6">
                 <div class="chat-container">
@@ -129,41 +152,142 @@
                     <div class="card-header">
                         <ul class="nav nav-tabs card-header-tabs" id="actionTabs" role="tablist">
                             <li class="nav-item" role="presentation">
-                                <button class="nav-link active" id="thinking-tab" data-bs-toggle="tab" data-bs-target="#thinking" type="button" role="tab" aria-controls="thinking" aria-selected="true">System Thinking</button>
+                                <button class="nav-link active" id="thinking-tab" data-bs-toggle="tab"
+                                    data-bs-target="#thinking" type="button" role="tab" aria-controls="thinking"
+                                    aria-selected="true">System Thinking</button>
                             </li>
                             <li class="nav-item" role="presentation">
-                                <button class="nav-link" id="context-tab" data-bs-toggle="tab" data-bs-target="#context" type="button" role="tab" aria-controls="context" aria-selected="false">Active Context</button>
+                                <button class="nav-link" id="context-tab" data-bs-toggle="tab" data-bs-target="#context"
+                                    type="button" role="tab" aria-controls="context" aria-selected="false">Active
+                                    Context</button>
                             </li>
                             <li class="nav-item" role="presentation">
-                                <button class="nav-link" id="actions-tab" data-bs-toggle="tab" data-bs-target="#actions" type="button" role="tab" aria-controls="actions" aria-selected="false">Actions</button>
+                                <button class="nav-link" id="actions-tab" data-bs-toggle="tab" data-bs-target="#actions"
+                                    type="button" role="tab" aria-controls="actions"
+                                    aria-selected="false">Actions</button>
                             </li>
                             <li class="nav-item" role="presentation">
-                                <button class="nav-link" id="debug-tab" data-bs-toggle="tab" data-bs-target="#debug" type="button" role="tab" aria-controls="debug" aria-selected="false">Debug</button>
+                                <button class="nav-link" id="debug-tab" data-bs-toggle="tab" data-bs-target="#debug"
+                                    type="button" role="tab" aria-controls="debug" aria-selected="false">Debug</button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="workflows-tab" data-bs-toggle="tab"
+                                    data-bs-target="#workflows" type="button" role="tab" aria-controls="workflows"
+                                    aria-selected="false">Workflows</button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="current-workflow-tab" data-bs-toggle="tab"
+                                    data-bs-target="#current-workflow" type="button" role="tab"
+                                    aria-controls="current-workflow" aria-selected="false">Current Workflow</button>
                             </li>
                         </ul>
                     </div>
                     <div class="card-body">
                         <div class="tab-content" id="actionTabContent">
-                            <div class="tab-pane fade show active" id="thinking" role="tabpanel" aria-labelledby="thinking-tab">
+                            <div class="tab-pane fade show active" id="thinking" role="tabpanel"
+                                aria-labelledby="thinking-tab">
                                 <div id="thinkingContent" class="action-panel">
-                                    <div class="alert alert-info">System thinking will appear here after sending a message.</div>
+                                    <div class="alert alert-info">System thinking will appear here after sending a
+                                        message.</div>
                                 </div>
                             </div>
                             <div class="tab-pane fade" id="context" role="tabpanel" aria-labelledby="context-tab">
                                 <div id="contextContent" class="action-panel">
-                                    <div class="alert alert-info">Active context will appear here after sending a message.</div>
+                                    <div class="alert alert-info">Active context will appear here after sending a
+                                        message.</div>
                                 </div>
                             </div>
                             <div class="tab-pane fade" id="actions" role="tabpanel" aria-labelledby="actions-tab">
                                 <div id="actionsContent" class="action-panel">
-                                    <div class="alert alert-info">Action history will appear here after sending a message.</div>
+                                    <div class="alert alert-info">Action history will appear here after sending a
+                                        message.</div>
                                 </div>
                             </div>
                             <div class="tab-pane fade" id="debug" role="tabpanel" aria-labelledby="debug-tab">
                                 <div id="debugContent" class="action-panel">
                                     <div class="alert alert-info">Debug information will appear here.</div>
                                     <div class="debug-log" id="debugLog"></div>
-                                    <button class="btn btn-sm btn-outline-secondary mt-2" id="clearDebugBtn">Clear Debug Log</button>
+                                    <button class="btn btn-sm btn-outline-secondary mt-2" id="clearDebugBtn">Clear Debug
+                                        Log</button>
+                                </div>
+                            </div>
+                            <div class="tab-pane fade" id="workflows" role="tabpanel" aria-labelledby="workflows-tab">
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <div class="d-flex justify-content-between mb-2">
+                                            <h5>Workflow Definitions</h5>
+                                            <button class="btn btn-sm btn-primary" id="newWorkflowBtn">New
+                                                Workflow</button>
+                                        </div>
+                                        <div class="list-group workflow-list mb-3">
+                                            <!-- Workflow list will load here -->
+                                            <div class="alert alert-info">Loading workflows...</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-8">
+                                        <div class="workflow-editor">
+                                            <form id="workflowForm">
+                                                <input type="hidden" id="workflowId">
+                                                <div class="mb-3">
+                                                    <label for="workflowName" class="form-label">Name</label>
+                                                    <input type="text" class="form-control" id="workflowName" required>
+                                                </div>
+                                                <div class="mb-3">
+                                                    <label for="workflowDescription"
+                                                        class="form-label">Description</label>
+                                                    <input type="text" class="form-control" id="workflowDescription">
+                                                </div>
+                                                <div class="row mb-3">
+                                                    <div class="col-md-6">
+                                                        <label for="workflowCategory"
+                                                            class="form-label">Category</label>
+                                                        <select class="form-control" id="workflowCategory">
+                                                            <option value="User">User</option>
+                                                            <option value="Knowledgebase">Knowledgebase</option>
+                                                        </select>
+                                                    </div>
+                                                    <div class="col-md-6">
+                                                        <label for="workflowVisibility"
+                                                            class="form-label">Visibility</label>
+                                                        <select class="form-control" id="workflowVisibility">
+                                                            <option value="Public">Public</option>
+                                                            <option value="In Development">In Development</option>
+                                                            <option value="Future">Future</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                                <div class="mb-3">
+                                                    <label for="workflowSteps" class="form-label">Steps (Numbered
+                                                        Format)</label>
+                                                    <textarea class="form-control" id="workflowSteps" rows="15"
+                                                        required></textarea>
+                                                    <small class="form-text text-muted">Use numbered format: "1. Step
+                                                        description", "2. Next step", etc.</small>
+                                                </div>
+                                                <div class="mb-3">
+                                                    <div class="form-check form-switch">
+                                                        <input class="form-check-input" type="checkbox"
+                                                            id="workflowActive" checked>
+                                                        <label class="form-check-label"
+                                                            for="workflowActive">Active</label>
+                                                    </div>
+                                                </div>
+                                                <div class="d-flex justify-content-between">
+                                                    <button type="submit" class="btn btn-success"
+                                                        id="saveWorkflowBtn">Save</button>
+                                                    <button type="button" class="btn btn-danger"
+                                                        id="deleteWorkflowBtn">Delete</button>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="tab-pane fade" id="current-workflow" role="tabpanel"
+                                aria-labelledby="current-workflow-tab">
+                                <div id="currentWorkflowContent" class="action-panel">
+                                    <div class="alert alert-info">Current workflow details will appear here after
+                                        sending a message.</div>
                                 </div>
                             </div>
                         </div>
@@ -175,11 +299,11 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', function () {
             // Debug logging
             const debugLog = document.getElementById('debugLog');
             const clearDebugBtn = document.getElementById('clearDebugBtn');
-            
+
             function log(message, type = 'info') {
                 const now = new Date();
                 const timeString = now.toISOString();
@@ -190,22 +314,22 @@
                 debugLog.scrollTop = debugLog.scrollHeight;
                 console[type](message);
             }
-            
-            clearDebugBtn.addEventListener('click', function() {
+
+            clearDebugBtn.addEventListener('click', function () {
                 debugLog.innerHTML = '';
             });
-            
+
             // Global error handler
-            window.addEventListener('error', function(event) {
+            window.addEventListener('error', function (event) {
                 log(`Unhandled Error: ${event.error ? event.error.toString() : 'Unknown error'} (${event.filename}:${event.lineno}:${event.colno})`, 'error');
-                document.getElementById('thinkingContent').innerHTML = 
+                document.getElementById('thinkingContent').innerHTML =
                     `<div class="alert alert-danger">
                         <strong>Unhandled Error:</strong><br>
                         ${event.error ? event.error.toString() : 'Unknown error'}<br>
                         <small>Line: ${event.lineno}, Col: ${event.colno}, File: ${event.filename}</small>
                     </div>`;
             });
-            
+
             // Main app code
             const apiUrl = window.location.origin; // Use the current host
             const chatBody = document.getElementById('chatBody');
@@ -219,7 +343,7 @@
             const thinkingContent = document.getElementById('thinkingContent');
             const contextContent = document.getElementById('contextContent');
             const actionsContent = document.getElementById('actionsContent');
-            
+
             // localStorage for message history
             let messageHistory = {};
             try {
@@ -234,14 +358,218 @@
                 log(`Error loading message history: ${error.message}`, 'error');
                 messageHistory = {};
             }
-            
+
+            // Initialize workflow tab listeners
+            document.getElementById('workflows-tab').addEventListener('click', loadWorkflows);
+            document.getElementById('newWorkflowBtn').addEventListener('click', newWorkflow);
+            document.getElementById('workflowForm').addEventListener('submit', saveWorkflow);
+            document.getElementById('deleteWorkflowBtn').addEventListener('click', deleteWorkflow);
+
+            // Current workflow tab listener
+            document.getElementById('current-workflow-tab').addEventListener('click', function () {
+                // If we have current workflow data, make sure it's displayed
+                if (window.currentWorkflowData) {
+                    updateCurrentWorkflowDisplay(window.currentWorkflowData);
+                }
+            });
+
+            // Function to load workflows from the API
+            function loadWorkflows() {
+                log("Loading workflows from API");
+                
+                try {
+                    fetch(`${apiUrl}/api/workflows`, {
+                        headers: {
+                            'X-API-Key': 'dev-dashboard-key'
+                        }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        log(`Loaded ${data.workflows ? data.workflows.length : 0} workflows`);
+                        const workflowList = document.querySelector('.workflow-list');
+                        
+                        if (data.workflows && data.workflows.length > 0) {
+                            workflowList.innerHTML = '';
+                            data.workflows.forEach(workflow => {
+                                const workflowItem = document.createElement('a');
+                                workflowItem.href = '#';
+                                workflowItem.classList.add('list-group-item', 'list-group-item-action');
+                                workflowItem.dataset.id = workflow.id;
+                                workflowItem.innerHTML = `
+                                    <div class="d-flex w-100 justify-content-between">
+                                        <h6 class="mb-1">${workflow.name}</h6>
+                                        <small>${workflow.active ? 'Active' : 'Inactive'}</small>
+                                    </div>
+                                    <small>${workflow.description || 'No description'}</small>
+                                `;
+                                workflowItem.addEventListener('click', () => loadWorkflowDetails(workflow.id));
+                                workflowList.appendChild(workflowItem);
+                            });
+                        } else {
+                            workflowList.innerHTML = '<div class="alert alert-warning">No workflows found</div>';
+                        }
+                    })
+                    .catch(error => {
+                        log(`Error loading workflows: ${error.message}`, 'error');
+                        document.querySelector('.workflow-list').innerHTML = 
+                            `<div class="alert alert-danger">Error loading workflows: ${error.message}</div>`;
+                    });
+                } catch (error) {
+                    log(`Error in loadWorkflows: ${error.message}`, 'error');
+                }
+            }
+
+            // Function to load workflow details
+            function loadWorkflowDetails(workflowId) {
+                log(`Loading details for workflow: ${workflowId}`);
+                
+                try {
+                    // Reset form
+                    document.getElementById('workflowId').value = workflowId;
+                    
+                    // Find workflow in memory from the list
+                    fetch(`${apiUrl}/api/workflows`, {
+                        headers: {
+                            'X-API-Key': 'dev-dashboard-key'
+                        }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        const workflow = data.workflows.find(wf => wf.id === workflowId);
+                        
+                        if (workflow) {
+                            document.getElementById('workflowName').value = workflow.name || '';
+                            document.getElementById('workflowDescription').value = workflow.description || '';
+                            document.getElementById('workflowCategory').value = workflow.category || 'User';
+                            document.getElementById('workflowVisibility').value = workflow.visibility || 'Public';
+                            document.getElementById('workflowActive').checked = workflow.active !== false;
+                            
+                            // Format steps from JSON to text
+                            let stepsText = '';
+                            if (typeof workflow.steps === 'object') {
+                                for (const [key, value] of Object.entries(workflow.steps)) {
+                                    stepsText += `${key}. ${value}\n`;
+                                }
+                            } else if (typeof workflow.steps === 'string') {
+                                stepsText = workflow.steps;
+                            }
+                            
+                            document.getElementById('workflowSteps').value = stepsText;
+                            
+                            log(`Loaded workflow details for: ${workflow.name}`);
+                        } else {
+                            log(`Workflow not found: ${workflowId}`, 'warning');
+                            alert('Workflow not found');
+                        }
+                    })
+                    .catch(error => {
+                        log(`Error loading workflow details: ${error.message}`, 'error');
+                        alert(`Error loading workflow details: ${error.message}`);
+                    });
+                } catch (error) {
+                    log(`Error in loadWorkflowDetails: ${error.message}`, 'error');
+                }
+            }
+
+            // Function to create a new workflow
+            function newWorkflow() {
+                log("Creating new workflow");
+                
+                try {
+                    // Reset form
+                    document.getElementById('workflowId').value = '';
+                    document.getElementById('workflowName').value = '';
+                    document.getElementById('workflowDescription').value = '';
+                    document.getElementById('workflowCategory').value = 'User';
+                    document.getElementById('workflowVisibility').value = 'Public';
+                    document.getElementById('workflowActive').checked = true;
+                    document.getElementById('workflowSteps').value = '1. First step\n2. Second step';
+                } catch (error) {
+                    log(`Error in newWorkflow: ${error.message}`, 'error');
+                }
+            }
+
+            // Function to save a workflow
+            function saveWorkflow(event) {
+                event.preventDefault();
+                log("Saving workflow");
+                
+                try {
+                    // For MVP, just show an alert since we're not implementing full workflow editing
+                    alert('Workflow editor is a placeholder in this MVP simulator. Changes are not saved.');
+                    
+                    // In a real implementation, you would send the form data to the API
+                    // and update the workflow list on success
+                } catch (error) {
+                    log(`Error in saveWorkflow: ${error.message}`, 'error');
+                }
+            }
+
+            // Function to delete a workflow
+            function deleteWorkflow() {
+                log("Deleting workflow");
+                
+                try {
+                    // For MVP, just show an alert
+                    alert('Workflow deletion is a placeholder in this MVP simulator.');
+                    
+                    // In a real implementation, you would send a delete request to the API
+                    // and update the workflow list on success
+                } catch (error) {
+                    log(`Error in deleteWorkflow: ${error.message}`, 'error');
+                }
+            }
+
+            // Function to update current workflow display
+            function updateCurrentWorkflowDisplay(workflowData) {
+                log("Updating current workflow display");
+                
+                try {
+                    const currentWorkflowContent = document.getElementById('currentWorkflowContent');
+                    
+                    if (workflowData) {
+                        // Format steps for display
+                        let stepsHtml = '';
+                        if (typeof workflowData.steps === 'object') {
+                            for (const [key, value] of Object.entries(workflowData.steps)) {
+                                stepsHtml += `<li>${key}. ${value}</li>`;
+                            }
+                        } else if (typeof workflowData.steps === 'string') {
+                            workflowData.steps.split('\n').forEach(step => {
+                                stepsHtml += `<li>${step}</li>`;
+                            });
+                        }
+                        
+                        currentWorkflowContent.innerHTML = `
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5>${workflowData.name || 'Unknown Workflow'}</h5>
+                                    <small>${workflowData.description || 'No description'}</small>
+                                </div>
+                                <div class="card-body">
+                                    <p><strong>ID:</strong> ${workflowData.id || 'N/A'}</p>
+                                    <p><strong>Status:</strong> ${workflowData.status || 'Unknown'}</p>
+                                    <p><strong>Current Step:</strong> ${workflowData.current_step || 'N/A'}</p>
+                                    <p><strong>Steps:</strong></p>
+                                    <ol>${stepsHtml}</ol>
+                                </div>
+                            </div>
+                        `;
+                    } else {
+                        currentWorkflowContent.innerHTML = '<div class="alert alert-info">No workflow data available</div>';
+                    }
+                } catch (error) {
+                    log(`Error in updateCurrentWorkflowDisplay: ${error.message}`, 'error');
+                }
+            }
+
             // Load existing messages for current phone
             function loadMessages() {
                 try {
                     const phone = phoneNumber.value;
                     currentPhone.textContent = phone;
                     chatBody.innerHTML = '';
-                    
+
                     if (messageHistory[phone]) {
                         log(`Loading ${messageHistory[phone].length} messages for ${phone}`);
                         messageHistory[phone].forEach(msg => {
@@ -256,21 +584,21 @@
                     log(`Error in loadMessages: ${error.message}`, 'error');
                 }
             }
-            
+
             // Add message to chat UI
             function addMessageToChat(message, isUser) {
                 try {
                     log(`Adding message to chat: ${isUser ? 'User' : 'Bot'} - ${message.substring(0, 30)}${message.length > 30 ? '...' : ''}`);
-                    
+
                     const messageDiv = document.createElement('div');
                     messageDiv.classList.add('message');
                     messageDiv.classList.add(isUser ? 'user-message' : 'bot-message');
                     messageDiv.textContent = message;
                     chatBody.appendChild(messageDiv);
-                    
+
                     // Scroll to bottom
                     chatBody.scrollTop = chatBody.scrollHeight;
-                    
+
                     // Save to history
                     const phone = phoneNumber.value;
                     if (!messageHistory[phone]) {
@@ -281,7 +609,7 @@
                         isUser: isUser,
                         timestamp: new Date().toISOString()
                     });
-                    
+
                     try {
                         localStorage.setItem('chatMessages', JSON.stringify(messageHistory));
                         log('Message saved to history');
@@ -292,30 +620,30 @@
                     log(`Error in addMessageToChat: ${error.message}`, 'error');
                 }
             }
-            
+
             // Send message
             async function sendMessage() {
                 const message = messageInput.value.trim();
                 const phone = phoneNumber.value;
-                
+
                 if (!message) {
                     log('Empty message, not sending', 'warning');
                     return;
                 }
-                
+
                 log(`Sending message: ${message}`);
-                
+
                 // Add user message to chat
                 addMessageToChat(message, true);
-                
+
                 // Clear input
                 messageInput.value = '';
-                
+
                 // Update thinking panel
                 thinkingContent.innerHTML = '<div class="alert alert-info">Processing message...</div>';
                 contextContent.innerHTML = '<div class="alert alert-info">Loading context...</div>';
                 actionsContent.innerHTML = '<div class="alert alert-info">Loading actions...</div>';
-                
+
                 try {
                     // Prepare request data
                     const requestData = {
@@ -323,7 +651,7 @@
                         message: message
                     };
                     log(`Request data: ${JSON.stringify(requestData)}`);
-                    
+
                     // Send to API
                     log(`Sending request to ${apiUrl}/api/simulate/message`);
                     const response = await fetch(`${apiUrl}/api/simulate/message`, {
@@ -333,17 +661,17 @@
                         },
                         body: JSON.stringify(requestData)
                     });
-                    
+
                     log(`Response status: ${response.status} ${response.statusText}`);
-                    
+
                     if (!response.ok) {
                         throw new Error(`API error: ${response.status}`);
                     }
-                    
+
                     // Parse the response as JSON
                     const responseText = await response.text();
                     log(`Response text: ${responseText}`);
-                    
+
                     let responseData;
                     try {
                         responseData = JSON.parse(responseText);
@@ -352,7 +680,7 @@
                         log(`Error parsing response JSON: ${parseError.message}`, 'error');
                         throw new Error(`Failed to parse response: ${parseError.message}`);
                     }
-                    
+
                     // Add bot response to chat
                     if (responseData && responseData.message) {
                         log(`Bot message: ${responseData.message}`);
@@ -360,7 +688,7 @@
                     } else {
                         log("No message in response data", 'warning');
                     }
-                    
+
                     // Update thinking panel
                     if (responseData && responseData.thinking) {
                         log(`Thinking: ${responseData.thinking}`);
@@ -388,7 +716,7 @@
                         log("No thinking data in response", 'warning');
                         thinkingContent.innerHTML = '<div class="alert alert-warning">No thinking data returned</div>';
                     }
-                    
+
                     // Update context panel
                     if (responseData && responseData.context) {
                         log(`Context: ${JSON.stringify(responseData.context)}`);
@@ -404,7 +732,7 @@
                         log("No context data in response", 'warning');
                         contextContent.innerHTML = '<div class="alert alert-warning">No context data returned</div>';
                     }
-                    
+
                     // For actions, we would ideally fetch the action history from the API
                     // but for simplicity, we'll just show the current action
                     if (responseData && responseData.action) {
@@ -422,18 +750,18 @@
                         log("No action data in response", 'warning');
                         actionsContent.innerHTML = '<div class="alert alert-warning">No action data returned</div>';
                     }
-                    
+
                     log("Message sending complete");
-                    
+
                 } catch (error) {
                     log(`Error sending message: ${error.message}`, 'error');
                     thinkingContent.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
                     addMessageToChat(`Error: Unable to get response from server. ${error.message}`, false);
                 }
             }
-            
+
             // Event listeners
-            sendBtn.addEventListener('click', function() {
+            sendBtn.addEventListener('click', function () {
                 try {
                     log("Send button clicked");
                     sendMessage();
@@ -441,28 +769,28 @@
                     log(`Error in send button event handler: ${error.message}`, 'error');
                 }
             });
-            
-            messageInput.addEventListener('keypress', function(e) {
+
+            messageInput.addEventListener('keypress', function (e) {
                 if (e.key === 'Enter') {
                     log("Enter key pressed in message input");
                     sendMessage();
                 }
             });
-            
-            phoneNumber.addEventListener('change', function() {
+
+            phoneNumber.addEventListener('change', function () {
                 log(`Phone number changed to: ${phoneNumber.value}`);
                 loadMessages();
             });
-            
-            newPhoneBtn.addEventListener('click', function() {
+
+            newPhoneBtn.addEventListener('click', function () {
                 // Generate random phone number
                 const randomPhone = '+1' + Math.floor(Math.random() * 10000000000).toString().padStart(10, '0');
                 log(`Generated new random phone: ${randomPhone}`);
                 phoneNumber.value = randomPhone;
                 loadMessages();
             });
-            
-            clearBtn.addEventListener('click', function() {
+
+            clearBtn.addEventListener('click', function () {
                 const phone = phoneNumber.value;
                 log(`Clearing chat history for: ${phone}`);
                 if (messageHistory[phone]) {
@@ -471,16 +799,17 @@
                     chatBody.innerHTML = '';
                 }
             });
-            
-            refreshBtn.addEventListener('click', function() {
+
+            refreshBtn.addEventListener('click', function () {
                 log("Refreshing message history");
                 loadMessages();
             });
-            
+
             // Initial load
             log("Initializing WhatsApp simulator");
             loadMessages();
         });
     </script>
 </body>
+
 </html>

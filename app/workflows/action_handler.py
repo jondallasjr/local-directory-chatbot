@@ -122,12 +122,29 @@ class ActionHandler:
             # Extract workflow information
             workflow_def = current_workflow.get('workflow_definition', {})
             
-            # Prepare workflow information for LLM
+            # Get the steps as a properly formatted string for the LLM
+            workflow_steps_str = workflow_def.get('steps', '')
+            if isinstance(workflow_steps_str, dict):
+                # Convert dict to string if needed
+                workflow_steps_str = '\n'.join([f"{key}: {value}" for key, value in workflow_steps_str.items()])
+
+            # Make sure the current_step is set if not already
+            if not current_workflow.get('current_step'):
+                # Default to the first step if none is set
+                first_step = "1. Greet the User and Determine Workflow"  # Default first step
+                SupabaseDB.update_workflow_instance(
+                    instance_id=current_workflow['id'],
+                    status='active',
+                    current_step=first_step
+                )
+                current_workflow['current_step'] = first_step
+
+            # Enhanced workflow info for LLM
             workflow_for_llm = {
                 'id': current_workflow.get('id'),
                 'name': workflow_def.get('name', 'Unknown'),
                 'description': workflow_def.get('description', ''),
-                'steps': workflow_def.get('steps', {}),
+                'steps': workflow_steps_str,  # Formatted steps as string
                 'status': current_workflow.get('status', 'active'),
                 'current_step': current_workflow.get('current_step'),
                 'context_data': active_context
@@ -142,6 +159,67 @@ class ActionHandler:
                 messages=messages,
                 action_types=ActionHandler.get_action_types()
             )
+            
+            if action_result.get('Next Action') == 'Transition Workflow':
+                # Extract the target workflow type from context or action result
+                target_workflow_type = action_result.get('Target Workflow') or active_context.get('target_workflow_type')
+                
+                if target_workflow_type:
+                    # Try to find the workflow definition
+                    target_workflow_def = ActionHandler.get_workflow_definition_by_name(target_workflow_type)
+                    
+                    if target_workflow_def:
+                        # Create new workflow instance
+                        new_workflow = ActionHandler.create_workflow_instance(
+                            definition_id=target_workflow_def['id'],
+                            user_id=user_id,
+                            status='active',
+                            context_data=active_context  # Transfer context
+                        )
+                        
+                        if new_workflow:
+                            # Update the current workflow reference
+                            current_workflow = new_workflow
+                            # Update action with the new workflow ID
+                            SupabaseDB.update_action_status(
+                                action_id=action['id'],
+                                status='Complete',
+                                execution_data={
+                                    "transition_to": target_workflow_type,
+                                    "new_workflow_id": new_workflow['id']
+                                }
+                            )
+                            
+                            # Log the transition
+                            SupabaseDB.add_log(
+                                message=f"Transitioned from workflow {workflow_for_llm['name']} to {target_workflow_type}",
+                                level='info',
+                                user_id=user_id
+                            )
+            
+            # Update context based on message content
+            context_update = LLMHandler.update_context(
+                current_context=active_context,
+                messages=messages[-3:],  # Use last 3 messages for context
+                current_workflow=workflow_for_llm
+            )
+
+            if context_update and not 'error' in context_update:
+                # Apply context updates
+                for key in context_update.get('removeContext', []):
+                    if key in active_context:
+                        del active_context[key]
+                        
+                for key, value in context_update.get('addContext', {}).items():
+                    active_context[key] = value
+                    
+                # Update workflow with new context
+                SupabaseDB.update_workflow_instance(
+                    instance_id=current_workflow['id'],
+                    status='active',
+                    current_step=current_workflow.get('current_step'),
+                    context_data=active_context
+                )
             
             # Update the workflow instance with any new step
             if action_result.get('Step'):
@@ -658,6 +736,58 @@ class ActionHandler:
             )
             
             # Usually after logging, we'd do something else
+            return ActionHandler.execute_action(
+                action_type="Send User Message",
+                user=user,
+                active_context=active_context,
+                workflow=workflow,
+                messages=messages,
+                action_id=action_id
+            )
+        
+        elif action_type == "Query Entity Graph":
+            # Extract query parameters from context or last message
+            search_text = active_context.get('search_text', '')
+            
+            # If no search text in context, try to extract it from the last message
+            if not search_text and messages:
+                search_text = messages[-1]['message_content']
+            
+            entity_types = active_context.get('entity_types', None)
+            width = active_context.get('width', 2)
+            
+            # Log the search attempt
+            SupabaseDB.add_log(
+                message=f"Searching entity graph for: {search_text}",
+                level='info',
+                user_id=user_id,
+                action_id=action_id
+            )
+            
+            # Perform the search
+            search_results = SupabaseDB.search_entities_with_context(
+                search_text=search_text,
+                entity_types=entity_types,
+                width=width
+            )
+            
+            # Update context with results
+            active_context['search_results'] = search_results
+            active_context['search_text'] = search_text
+            
+            # Update action status
+            SupabaseDB.update_action_status(
+                action_id=action_id,
+                status='Complete',
+                execution_data={
+                    "search_text": search_text,
+                    "entity_types": entity_types,
+                    "width": width,
+                    "results_count": search_results.get('count', 0) if isinstance(search_results, dict) else 0
+                }
+            )
+            
+            # After querying, generate a message with the results
             return ActionHandler.execute_action(
                 action_type="Send User Message",
                 user=user,

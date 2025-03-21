@@ -309,6 +309,23 @@ SIMULATOR_HTML = """<!DOCTYPE html>
             const contextContent = document.getElementById('contextContent');
             const actionsContent = document.getElementById('actionsContent');
             
+            // Load workflows from the API
+            function loadWorkflows() {
+                fetch(`${apiUrl}/api/workflows`, {
+                    headers: {
+                        'X-API-Key': 'dev-dashboard-key'
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    console.log("Loaded workflows:", data);
+                    // You can do something with the workflows here if needed
+                })
+                .catch(error => {
+                    console.error("Error loading workflows:", error);
+                });
+            }
+            
             // localStorage for message history
             let messageHistory = JSON.parse(localStorage.getItem('chatMessages') || '{}');
             

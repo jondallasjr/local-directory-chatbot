@@ -369,11 +369,11 @@ async def global_exception_handler(request: Request, exc: Exception):
     # Log the error
     logger.error(f"Unhandled exception at {location}: {str(exc)}\n{traceback.format_exc()}")
     
-    # Return a user-friendly error response
     return JSONResponse(
         status_code=500,
         content={
             "message": "Sorry, I encountered an error while processing your message. Please try again later.",
-            "error": f"{str(exc)} at {location}"
+            "error": f"{str(exc)} at {location}",
+            "debug_info": traceback.format_exc() if request.query_params.get("debug") == "true" else None
         }
     )
