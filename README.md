@@ -12,24 +12,73 @@ This is a development tool for testing and debugging the Directory Chatbot witho
   - Current workflow step and action
   - Active context data
   - Action history
+- Graph knowledge base for storing and retrieving information about entities and their relationships
 
 ## Setup
 
+### Basic Setup
+
 1. Make sure your Directory Chatbot API is running (typically on port 8000)
-2. Save the `whatsapp_simulator.py` file to your project directory
-3. Install the required dependencies:
+2. Install the required dependencies:
 
 ```bash
-pip install fastapi uvicorn httpx
+pip install -r requirements.txt
 ```
 
-4. Run the simulator:
+3. Run the simulator:
 
 ```bash
 python whatsapp_simulator.py
 ```
 
-5. Open your browser and navigate to: http://localhost:8080
+4. Open your browser and navigate to: http://localhost:8080
+
+### Database Setup
+
+The application uses Supabase with PostgreSQL for data storage, including a graph knowledge base. Follow these steps to set up the database:
+
+1. Make sure you have a Supabase account and project set up
+2. Update the `.env` file with your Supabase credentials:
+
+```
+SUPABASE_URL=https://your-project-id.supabase.co
+SUPABASE_KEY=your-supabase-key
+```
+
+3. Set up the database schema by running the SQL migrations:
+   - Log in to your Supabase dashboard
+   - Navigate to the SQL Editor
+   - Copy and paste the contents of `app/database/migrations/001_setup_graph_kb.sql`
+   - Execute the script
+
+4. Verify the database setup by running:
+
+```bash
+python setup_graph_kb_direct.py --check-connection
+```
+
+5. (Optional) Add sample data to the knowledge base:
+
+```bash
+python setup_graph_kb_direct.py --add-sample-data
+```
+
+## Knowledge Base Structure
+
+The graph knowledge base has the following components:
+
+- **Entities**: Represent real-world objects (providers, services, events, etc.)
+- **Relationships**: Connect entities with typed relationships (offers, provides, organizes, etc.)
+- **Vector Embeddings**: Enable semantic search capabilities
+- **Graph Traversal**: Allow exploring connected information
+
+### Entity Types
+
+- `provider`: Organizations or individuals providing services
+- `service`: Services offered to users
+- `product`: Physical items available to users
+- `event`: Time-bound activities or gatherings
+- `location`: Physical places with geographical coordinates
 
 ## Configuration
 
@@ -110,6 +159,15 @@ If responses are missing debugging information:
 2. Check browser console for any JavaScript errors
 3. Use the browser's network inspector to examine the raw API responses
 
+### Database Connection Issues
+
+If you encounter database connection problems:
+
+1. Verify your Supabase URL and API key in the `.env` file
+2. Check that your IP is allowed in the Supabase dashboard
+3. Make sure the database schema has been properly set up using the migration files
+4. Run `python setup_graph_kb_direct.py --check-connection` to diagnose issues
+
 ## Extending the Simulator
 
 The simulator HTML and JavaScript can be modified to add additional features:
@@ -123,3 +181,4 @@ The simulator HTML and JavaScript can be modified to add additional features:
 - Chat history is stored in browser localStorage and persists between sessions
 - The simulator runs on a separate port (8080) from your main API server
 - API requests are proxied through the simulator to handle CORS issues
+- The graph knowledge base uses PostgreSQL with pgvector for semantic search capabilities

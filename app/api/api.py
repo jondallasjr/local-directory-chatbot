@@ -16,6 +16,7 @@ import logging
 from app.workflows.action_handler import ActionHandler
 from app.api.twilio_handler import TwilioHandler
 from app.database.supabase_client import SupabaseDB, supabase
+from app.api.kb_api import router as kb_router
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -35,6 +36,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include the knowledge base router
+app.include_router(kb_router)
 
 # API models
 class MessageRequest(BaseModel):
@@ -343,15 +347,15 @@ async def healthcheck():
         "version": "0.01",
         "database": db_status,
         "timestamp": supabase.table('_rpc').select().execute().data
-    }
-    
-# Add exception handler
+    }  
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """
     Global exception handler with detailed error information.
     """
     # Get detailed traceback
+    tb_str = traceback.format_exc()
     tb_frames = traceback.extract_tb(exc.__traceback__)
     
     # Find the most relevant frame (closest to the error)
@@ -366,14 +370,30 @@ async def global_exception_handler(request: Request, exc: Exception):
     else:
         location = "unknown location"
     
-    # Log the error
-    logger.error(f"Unhandled exception at {location}: {str(exc)}\n{traceback.format_exc()}")
+    # Log the error (just once with complete information)
+    logger.error(f"Unhandled exception at {location}: {str(exc)}\n{tb_str}")
     
+    # For the /api/simulate/message endpoint, always return a valid response
+    if request.url.path == "/api/simulate/message":
+        return JSONResponse(
+            status_code=200,  # Return 200 even though there was an error
+            content={
+                "message": "I'm sorry, I'm having trouble processing that request right now. Could you try asking something else?",
+                "thinking": "Error recovery fallback",
+                "step": "Error handling",
+                "action": "Send User Message",
+                "context": {},
+                "error": str(exc) if request.query_params.get("debug") == "true" else None,
+                "location": location if request.query_params.get("debug") == "true" else None
+            }
+        )
+    
+    # For other endpoints, return the regular 500 error
     return JSONResponse(
         status_code=500,
         content={
             "message": "Sorry, I encountered an error while processing your message. Please try again later.",
             "error": f"{str(exc)} at {location}",
-            "debug_info": traceback.format_exc() if request.query_params.get("debug") == "true" else None
+            "traceback": tb_str if request.query_params.get("debug") == "true" else None
         }
     )
